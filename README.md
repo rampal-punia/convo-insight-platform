@@ -2,7 +2,9 @@
 
 ConvoInsight is a state-of-the-art Customer Conversational Intelligence Platform powered by a Large Language Model (LLM) agent. This platform analyzes customer interactions across diverse channels to extract actionable insights, enabling businesses to optimize customer service processes and enhance the overall customer experience.
 
-**Note: This project is in active development and is currently in its initial phase.**
+### Note:
+
+*This project is in active development and is currently in its initial phase.*
 
 ## Table of Contents
 
