@@ -1,6 +1,6 @@
-import os
 from pathlib import Path
 import sys
+from decouple import config
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -12,7 +12,7 @@ sys.path.append(str(BASE_DIR / "apps"))
 # See https://docs.djangoproject.com/en/{{ docs_version }}/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv(
+SECRET_KEY = config(
     'DJANGO_SECRET_KEY', 'django-insecure-p!1w7j+^j5v8y-@$_9j*8mr-)l#$u=08=c)!=(b1dleci18$7+')
 
 # SECURITY WARNING: don't run with debug turned on in production!
@@ -25,7 +25,8 @@ ALLOWED_HOSTS = [
 ]
 
 DJANGO_APPS = [
-    'daphne',
+    # 'daphne',
+    'jazzmin',
     'channels',
     'django.contrib.admin',
     'django.contrib.auth',
@@ -44,15 +45,18 @@ THIRD_PARTY_APPS = [
     'crispy_bootstrap5',
     'django_cleanup.apps.CleanupConfig',
 
+    'allauth',
+    'allauth.account',
+
     # Social Authentication
     # 'oauth2_provider',
     # 'social_django',
 ]
 
 LOCAL_APPS = [
-    'analysis',
-    'api',
-    'dashboard',
+    # 'analysis',
+    # 'api',
+    # 'dashboard',
     # 'users',
 ]
 
@@ -66,7 +70,10 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'activitylog.middleware.ActivityLogMiddleware',
+
+    # Add the account middleware:
+    "allauth.account.middleware.AccountMiddleware",
+
     # CROSS Origin
     # 'corsheaders.middleware.CorsMiddleware',
 ]
@@ -84,6 +91,8 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                # `allauth` needs this from django
+                'django.template.context_processors.request',
             ],
         },
     },
@@ -213,11 +222,30 @@ REST_FRAMEWORK = {
 # EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', 'rampalpunia1983@gmail.com')
 # EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', 'password')
 
-# AUTHENTICATION_BACKENDS = (
-#     'users.backends.EmailBackend',
-#     'social_core.backends.google.GoogleOAuth2',
-#     'django.contrib.auth.backends.ModelBackend',
-# )
+AUTHENTICATION_BACKENDS = (
+    # 'users.backends.EmailBackend',
+    # 'social_core.backends.google.GoogleOAuth2',
+
+    # Needed to login by username in Django admin, regardless of `allauth`
+    'django.contrib.auth.backends.ModelBackend',
+
+    # `allauth` specific authentication methods, such as login by email
+    'allauth.account.auth_backends.AuthenticationBackend',
+)
+
+# Provider specific settings
+# SOCIALACCOUNT_PROVIDERS = {
+#     'google': {
+#         # For each OAuth based provider, either add a ``SocialApp``
+#         # (``socialaccount`` app) containing the required client
+#         # credentials, or list them here:
+#         'APP': {
+#             'client_id': '123',
+#             'secret': '456',
+#             'key': ''
+#         }
+#     }
+# }
 
 # Logging
 LOGGING = {
@@ -269,7 +297,7 @@ REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.LimitOffsetPagination',
     'DEFAULT_FILTER_BACKENDS': ['django_filters.rest_framework.DjangoFilterBackend',
                                 'rest_framework.filters.OrderingFilter'],
-    'PAGE_SIZE': int(os.getenv('DJANGO_PAGINATION_LIMIT', 18)),
+    'PAGE_SIZE': int(config('DJANGO_PAGINATION_LIMIT', 18)),
     'DATETIME_FORMAT': '%Y-%m-%dT%H:%M:%S.%fZ',
     'DEFAULT_RENDERER_CLASSES': (
         'rest_framework.renderers.JSONRenderer',

@@ -24,12 +24,14 @@ cron-descriptor==1.4.3
 cryptography==43.0.0
 daphne==4.1.2
 Django==5.0.7
+django-allauth==64.0.0
 django-celery-beat==2.6.0
 django-celery-results==2.5.1
 django-cleanup==8.1.0
 django-crispy-forms==2.3
 django-debug-toolbar==4.4.6
 django-filter==24.3
+django-jazzmin==3.0.0
 django-timezone-field==7.0
 djangorestframework==3.15.2
 frozenlist==1.4.1
@@ -49,9 +51,11 @@ langsmith==0.1.96
 Markdown==3.6
 multidict==6.0.5
 numpy==1.26.4
+oauthlib==3.2.2
 orjson==3.10.6
 packaging==24.1
 pandas==2.2.2
+pgvector==0.3.2
 prompt_toolkit==3.0.47
 psycopg2==2.9.9
 pyasn1==0.6.0
@@ -59,6 +63,7 @@ pyasn1_modules==0.4.0
 pycparser==2.22
 pydantic==2.8.2
 pydantic_core==2.20.1
+PyJWT==2.9.0
 pyOpenSSL==24.2.1
 python-crontab==3.2.0
 python-dateutil==2.9.0.post0
@@ -67,6 +72,7 @@ pytz==2024.1
 PyYAML==6.0.1
 redis==5.0.8
 requests==2.32.3
+requests-oauthlib==2.0.0
 scikit-learn==1.5.1
 scipy==1.14.0
 service-identity==24.1.0

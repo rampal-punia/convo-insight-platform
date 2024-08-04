@@ -1,4 +1,5 @@
 from .base import *
+from decouple import config
 
 
 DEBUG = True
@@ -7,7 +8,9 @@ INSTALLED_APPS += [
     'debug_toolbar',
 ]
 
-MIDDLEWARE += ['debug_toolbar.middleware.DebugToolbarMiddleware']
+MIDDLEWARE += [
+    'debug_toolbar.middleware.DebugToolbarMiddleware',
+]
 
 # for development, we don't need password validation
 AUTH_PASSWORD_VALIDATORS = []
@@ -21,11 +24,11 @@ def show_toolbar(request):
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('DB_NAME'),
-        'USER': os.getenv('DB_USER'),
-        'PASSWORD': os.getenv('DB_PASSWORD'),
-        'HOST': os.getenv('DB_HOST', 'localhost'),
-        'PORT': os.getenv('DB_PORT'),
+        'NAME': config('DB_NAME'),
+        'USER': config('DB_USER'),
+        'PASSWORD': config('DB_PASSWORD'),
+        'HOST': config('DB_HOST', 'localhost'),
+        'PORT': config('DB_PORT'),
     }
 }
 
