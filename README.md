@@ -2,6 +2,8 @@
 
 ConvoInsight is a state-of-the-art Customer Conversational Intelligence Platform powered by a Large Language Model (LLM) agent. This platform analyzes customer interactions across diverse channels to extract actionable insights, enabling businesses to optimize customer service processes and enhance the overall customer experience.
 
+**Note: This project is in active development and is currently in its initial phase.**
+
 ## Table of Contents
 
 1. [Project Overview](#project-overview)
@@ -100,7 +102,7 @@ ConvoInsight leverages advanced Natural Language Processing (NLP) techniques and
 
 ## Project Structure
 
-```
+```bash
 convo-insight-platform/
 ├── convoinsight/          # Main Django project directory
 │   ├── settings.py
@@ -109,12 +111,33 @@ convo-insight-platform/
 │   └── wsgi.py
 ├── apps/
 │   ├── analysis/          # App for conversation analysis
+│   │   ├── models.py
+│   │   ├── views.py
+│   │   ├── tasks.py       # Celery tasks for real-time analysis
+│   │   └── utils/         # Utility functions for analysis
 │   ├── dashboard/         # App for user interface and visualizations
+│   │   ├── models.py
+│   │   └── views.py
 │   └── api/               # App for API endpoints
-├── nlp/
-│   ├── models/            # Custom NLP models
-│   └── processors/        # Text processing utilities
-├── tasks/                 # Celery tasks
+│       ├── models.py
+│       └── views.py
+├── ml_models/             # Directory for ML model development
+│   ├── notebooks/         # Jupyter notebooks for model development
+│   │   ├── sentiment_analysis.ipynb
+│   │   ├── intent_recognition.ipynb
+│   │   ├── topic_modeling.ipynb
+│   │   └── agent_performance.ipynb
+│   ├── training_scripts/  # Scripts for model training
+│   │   ├── train_sentiment_model.py
+│   │   ├── train_intent_model.py
+│   │   ├── train_topic_model.py
+│   │   └── train_performance_model.py
+│   └── saved_models/      # Directory to store trained models
+├── data_processing/       # Scripts for data ingestion and preprocessing
+│   ├── ingest_chat_data.py
+│   ├── ingest_voice_data.py
+│   ├── ingest_email_data.py
+│   └── ingest_social_media_data.py
 ├── static/                # Static files (CSS, JS, images)
 ├── templates/             # HTML templates
 ├── tests/                 # Test cases
@@ -155,7 +178,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Acknowledgements
 
-- This project is part of the **Advanced Certification Course on Computational Data Science at IISC** with **TalentSpirit**. 
+- This project is part of the "Advanced Certification Course on Computational Data Science at [IISC](https://iisc.ac.in/)" with [TalentSpirit](https://talentsprint.com/course/computational-data-science-iisc-bangalore). 
+
 - We utilize the following datasets:
   - Relational Strategies in Customer Interactions (RSiCS)
   - 3K Conversations Dataset for ChatBot from Kaggle
