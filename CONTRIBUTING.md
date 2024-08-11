@@ -29,7 +29,9 @@ Welcome to the convo-insight-platform project! We're excited that you want to co
 4. **Set Up Remotes**:
    - Change into the project directory: `cd convo-insight-platform`
    - Add the original repository as a remote:
-     `git remote add upstream https://github.com/original-owner/convo-insight-platform.git`
+   ```bash
+   git remote add upstream https://github.com/rampal-punia/convo-insight-platform.git
+   ```
    - This allows you to keep your fork updated with the main project.
 
 ## Making Changes
