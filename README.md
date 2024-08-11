@@ -125,7 +125,8 @@ convo-insight-platform/
 │       └── views.py
 ├── ml_models/             # Directory for ML model development
 │   ├── notebooks/         # Jupyter notebooks for model development
-│   │   ├── sentiment_analysis.ipynb
+│   │   ├── sentiment_analysis_1.ipynb
+│   │   ├── sentiment_analysis_2.ipynb
 │   │   ├── intent_recognition.ipynb
 │   │   ├── topic_modeling.ipynb
 │   │   └── agent_performance.ipynb
@@ -137,6 +138,7 @@ convo-insight-platform/
 │   └── saved_models/      # Directory to store trained models
 ├── data_processing/       # Scripts for data ingestion and preprocessing
 │   ├── ingest_chat_data.py
+│   ├── ingest_sentiments.py
 │   ├── ingest_voice_data.py
 │   ├── ingest_email_data.py
 │   └── ingest_social_media_data.py
