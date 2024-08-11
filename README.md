@@ -165,7 +165,7 @@ Key endpoints include:
 
 ## Contributing
 
-We welcome contributions to ConvoInsight! Please follow these steps to contribute:
+We welcome contributions to ConvoInsight! Please follow these steps to contribute [more details](https://github.com/rampal-punia/convo-insight-platform/blob/master/CONTRIBUTING.md):
 
 1. Fork the repository
 2. Create a new branch (`git checkout -b feature/AmazingFeature`)

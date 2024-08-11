@@ -47,7 +47,7 @@ Welcome to the convo-insight-platform project! We're excited that you want to co
    - Stage your changes: `git add .`
    - Commit the changes: `git commit -m "Add a brief, descriptive commit message"`
 
-4. **Keep Your Fork Updated** (optional, but recommended):
+4. **Keep Your Fork Updated** (**optional**, but recommended):
    - Switch to your main branch: `git checkout main`
    - Fetch upstream changes: `git fetch upstream`
    - Merge upstream changes: `git merge upstream/main`
