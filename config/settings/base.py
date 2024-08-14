@@ -29,6 +29,7 @@ DJANGO_APPS = [
     'jazzmin',
     'channels',
     'django.contrib.admin',
+    'django.contrib.sites',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
@@ -47,13 +48,11 @@ THIRD_PARTY_APPS = [
 
     'allauth',
     'allauth.account',
-
-    # Social Authentication
-    # 'oauth2_provider',
-    # 'social_django',
+    'allauth.socialaccount',
 ]
 
 LOCAL_APPS = [
+    'accounts',
     # 'analysis',
     # 'api',
     # 'dashboard',
@@ -77,6 +76,25 @@ MIDDLEWARE = [
     # CROSS Origin
     # 'corsheaders.middleware.CorsMiddleware',
 ]
+
+AUTHENTICATION_BACKENDS = (
+    # 'users.backends.EmailBackend',
+    # 'social_core.backends.google.GoogleOAuth2',
+
+    # Needed to login by username in Django admin, regardless of `allauth`
+    'django.contrib.auth.backends.ModelBackend',
+
+    # `allauth` specific authentication methods, such as login by email
+    'allauth.account.auth_backends.AuthenticationBackend',
+)
+
+SITE_ID = 1
+# django-allauth settings
+ACCOUNT_EMAIL_REQUIRED = True
+ACCOUNT_USERNAME_REQUIRED = False
+ACCOUNT_AUTHENTICATION_METHOD = 'email'
+ACCOUNT_EMAIL_VERIFICATION = 'mandatory'
+# LOGIN_REDIRECT_URL = '/dashboard/'  # Adjust as needed
 
 ROOT_URLCONF = 'config.urls'
 
@@ -212,8 +230,8 @@ REST_FRAMEWORK = {
 
 
 # Email
-# EMAIL_BACKEND = os.getenv(
-#     'EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
+EMAIL_BACKEND = config(
+    'EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
 # EMAIL_HOST = os.getenv('EMAIL_HOST', 'localhost')
 # EMAIL_PORT = os.getenv('EMAIL_PORT', 1025)
 # EMAIL_FROM = os.getenv('EMAIL_FROM', 'noreply@somehost.local')
@@ -222,16 +240,6 @@ REST_FRAMEWORK = {
 # EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', 'rampalpunia1983@gmail.com')
 # EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', 'password')
 
-AUTHENTICATION_BACKENDS = (
-    # 'users.backends.EmailBackend',
-    # 'social_core.backends.google.GoogleOAuth2',
-
-    # Needed to login by username in Django admin, regardless of `allauth`
-    'django.contrib.auth.backends.ModelBackend',
-
-    # `allauth` specific authentication methods, such as login by email
-    'allauth.account.auth_backends.AuthenticationBackend',
-)
 
 # Provider specific settings
 # SOCIALACCOUNT_PROVIDERS = {

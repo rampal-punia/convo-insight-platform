@@ -111,7 +111,7 @@ convo-insight-platform/
 │   ├── urls.py
 │   ├── asgi.py
 │   └── wsgi.py
-├── apps/
+├── apps/                  # Django related apps
 │   ├── analysis/          # App for conversation analysis
 │   │   ├── models.py
 │   │   ├── views.py
@@ -123,7 +123,7 @@ convo-insight-platform/
 │   └── api/               # App for API endpoints
 │       ├── models.py
 │       └── views.py
-├── ml_models/             # Directory for ML model development
+├── ml_models/             # Offline tasks: Directory for ML model development
 │   ├── notebooks/         # Jupyter notebooks for model development
 │   │   ├── sentiment_analysis_1.ipynb
 │   │   ├── sentiment_analysis_2.ipynb
@@ -136,12 +136,13 @@ convo-insight-platform/
 │   │   ├── train_topic_model.py
 │   │   └── train_performance_model.py
 │   └── saved_models/      # Directory to store trained models
-├── data_processing/       # Scripts for data ingestion and preprocessing
+├── data_processing/       # Offline tasks: Scripts for data ingestion and preprocessing
 │   ├── ingest_chat_data.py
 │   ├── ingest_sentiments.py
 │   ├── ingest_voice_data.py
 │   ├── ingest_email_data.py
 │   └── ingest_social_media_data.py
+├── utils/                # Shared utility functions
 ├── static/                # Static files (CSS, JS, images)
 ├── templates/             # HTML templates
 ├── tests/                 # Test cases
