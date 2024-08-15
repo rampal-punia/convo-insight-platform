@@ -1,13 +1,12 @@
 from django.db import models
 from django.contrib.auth import get_user_model
-from dashboard.models import Conversation, AIMessage, UserMessage
 
 User = get_user_model()
 
 
 class LLMAgentPerformance(models.Model):
     conversation = models.ForeignKey(
-        Conversation, on_delete=models.CASCADE, related_name='performance_evaluations')
+        'dashboard.Conversation', on_delete=models.CASCADE, related_name='performance_evaluations')
     response_time = models.DurationField()
     accuracy_score = models.FloatField(null=True, blank=True)
     relevance_score = models.FloatField(null=True, blank=True)
@@ -23,7 +22,7 @@ class LLMAgentPerformance(models.Model):
 
 class ConversationMetrics(models.Model):
     conversation = models.OneToOneField(
-        Conversation, on_delete=models.CASCADE, related_name='metrics')
+        'dashboard.Conversation', on_delete=models.CASCADE, related_name='metrics')
     overall_satisfaction_score = models.FloatField(null=True, blank=True)
     average_response_time = models.DurationField(null=True, blank=True)
     average_accuracy_score = models.FloatField(null=True, blank=True)
@@ -37,7 +36,7 @@ class ConversationMetrics(models.Model):
 
 class Recommendation(models.Model):
     conversation = models.ForeignKey(
-        Conversation, on_delete=models.CASCADE, related_name='recommendations')
+        'dashboard.Conversation', on_delete=models.CASCADE, related_name='recommendations')
     content = models.TextField()
     confidence_score = models.FloatField()
     created_at = models.DateTimeField(auto_now_add=True)
@@ -49,7 +48,7 @@ class Recommendation(models.Model):
 
 class TopicDistribution(models.Model):
     conversation = models.ForeignKey(
-        Conversation, on_delete=models.CASCADE, related_name='topic_distributions')
+        'dashboard.Conversation', on_delete=models.CASCADE, related_name='topic_distributions')
     topic = models.ForeignKey('dashboard.Topic', on_delete=models.CASCADE)
     weight = models.FloatField()
 
@@ -62,7 +61,7 @@ class TopicDistribution(models.Model):
 
 class IntentPrediction(models.Model):
     message = models.OneToOneField(
-        UserMessage, on_delete=models.CASCADE, related_name='intent_prediction')
+        'dashboard.UserMessage', on_delete=models.CASCADE, related_name='intent_prediction')
     intent = models.ForeignKey('dashboard.Intent', on_delete=models.CASCADE)
     confidence_score = models.FloatField()
 

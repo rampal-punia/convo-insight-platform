@@ -56,7 +56,7 @@ class Conversation(CreationModificationDateBase):
 
 class Message(CreationModificationDateBase):
     conversation = models.ForeignKey(
-        'Conversation',
+        'dashboard.Conversation',
         on_delete=models.CASCADE,
         related_name='messages'
     )
@@ -73,7 +73,7 @@ class Message(CreationModificationDateBase):
     class Meta:
         ordering = ['created']
         indexes = [
-            models.Index(fields=['conversations', 'created']),
+            models.Index(fields=['conversation', 'created']),
             models.Index(fields=['is_from_user'])
         ]
 
