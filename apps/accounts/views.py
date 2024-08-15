@@ -11,16 +11,18 @@ class CustomLoginView(LoginView):
 
 
 class CustomSignupView(SignupView):
+    template_name = 'accounts/signup.html'
     form_class = CustomSignupForm
 
 
 class CustomPasswordResetView(PasswordResetView):
+    template_name = 'accounts/confirm_passwordreset.html'
     form_class = forms.CustomPasswordResetForm
 
 
 class CustomProfileView(LoginRequiredMixin, UpdateView):
     form_class = forms.CustomProfileForm
-    template_name = 'account/profile.html'
+    template_name = 'accounts/profile.html'
     success_url = '/accounts/profile/'
 
     def get_object(self):
