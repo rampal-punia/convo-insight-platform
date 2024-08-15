@@ -6,7 +6,7 @@ User = get_user_model()
 
 class LLMAgentPerformance(models.Model):
     conversation = models.ForeignKey(
-        'dashboard.Conversation', on_delete=models.CASCADE, related_name='performance_evaluations')
+        'convochat.Conversation', on_delete=models.CASCADE, related_name='performance_evaluations')
     response_time = models.DurationField()
     accuracy_score = models.FloatField(null=True, blank=True)
     relevance_score = models.FloatField(null=True, blank=True)
@@ -22,7 +22,7 @@ class LLMAgentPerformance(models.Model):
 
 class ConversationMetrics(models.Model):
     conversation = models.OneToOneField(
-        'dashboard.Conversation', on_delete=models.CASCADE, related_name='metrics')
+        'convochat.Conversation', on_delete=models.CASCADE, related_name='metrics')
     overall_satisfaction_score = models.FloatField(null=True, blank=True)
     average_response_time = models.DurationField(null=True, blank=True)
     average_accuracy_score = models.FloatField(null=True, blank=True)
@@ -36,7 +36,7 @@ class ConversationMetrics(models.Model):
 
 class Recommendation(models.Model):
     conversation = models.ForeignKey(
-        'dashboard.Conversation', on_delete=models.CASCADE, related_name='recommendations')
+        'convochat.Conversation', on_delete=models.CASCADE, related_name='recommendations')
     content = models.TextField()
     confidence_score = models.FloatField()
     created_at = models.DateTimeField(auto_now_add=True)
@@ -48,8 +48,8 @@ class Recommendation(models.Model):
 
 class TopicDistribution(models.Model):
     conversation = models.ForeignKey(
-        'dashboard.Conversation', on_delete=models.CASCADE, related_name='topic_distributions')
-    topic = models.ForeignKey('dashboard.Topic', on_delete=models.CASCADE)
+        'convochat.Conversation', on_delete=models.CASCADE, related_name='topic_distributions')
+    topic = models.ForeignKey('convochat.Topic', on_delete=models.CASCADE)
     weight = models.FloatField()
 
     class Meta:
@@ -61,8 +61,8 @@ class TopicDistribution(models.Model):
 
 class IntentPrediction(models.Model):
     message = models.OneToOneField(
-        'dashboard.UserMessage', on_delete=models.CASCADE, related_name='intent_prediction')
-    intent = models.ForeignKey('dashboard.Intent', on_delete=models.CASCADE)
+        'convochat.UserMessage', on_delete=models.CASCADE, related_name='intent_prediction')
+    intent = models.ForeignKey('convochat.Intent', on_delete=models.CASCADE)
     confidence_score = models.FloatField()
 
     def __str__(self):

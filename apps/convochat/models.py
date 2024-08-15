@@ -29,13 +29,6 @@ class Conversation(CreationModificationDateBase):
         on_delete=models.CASCADE,
         related_name='conversations',
     )
-    agent = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='handled_conversations'
-    )
     status = models.CharField(
         max_length=2,
         choices=Status.choices,
@@ -63,7 +56,7 @@ class Conversation(CreationModificationDateBase):
 
 class Message(CreationModificationDateBase):
     conversation = models.ForeignKey(
-        'Conversation',
+        'convochat.Conversation',
         on_delete=models.CASCADE,
         related_name='messages'
     )
@@ -80,7 +73,7 @@ class Message(CreationModificationDateBase):
     class Meta:
         ordering = ['created']
         indexes = [
-            models.Index(fields=['conversations', 'created']),
+            models.Index(fields=['conversation', 'created']),
             models.Index(fields=['is_from_user'])
         ]
 
@@ -186,6 +179,11 @@ class Sentiment(models.Model):
         UserMessage,
         on_delete=models.CASCADE,
         related_name='detailed_sentiment'
+    )
+    granular_category = models.CharField(
+        max_length=50,
+        blank=True,
+        null=True
     )
 
     def __str__(self) -> str:

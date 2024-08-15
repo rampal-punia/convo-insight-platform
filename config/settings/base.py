@@ -54,7 +54,8 @@ THIRD_PARTY_APPS = [
 LOCAL_APPS = [
     'accounts',
     'analysis',
-    # 'api',
+    'api',
+    'convochat',
     'dashboard',
 ]
 
