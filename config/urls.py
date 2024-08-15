@@ -11,6 +11,7 @@ urlpatterns = [
          name='account_reset_password'),
     path('accounts/profile/', views.CustomProfileView.as_view(),
          name='account_profile'),
+    # path('accounts/logout/', CustomLogoutView.as_view(), name='account_logout'),
     path('accounts/', include('allauth.urls')),
     path('admin/', admin.site.urls),
 ]

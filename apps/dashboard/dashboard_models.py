@@ -29,6 +29,13 @@ class Conversation(CreationModificationDateBase):
         on_delete=models.CASCADE,
         related_name='conversations',
     )
+    agent = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='handled_conversations'
+    )
     status = models.CharField(
         max_length=2,
         choices=Status.choices,
@@ -179,11 +186,6 @@ class Sentiment(models.Model):
         UserMessage,
         on_delete=models.CASCADE,
         related_name='detailed_sentiment'
-    )
-    granular_category = models.CharField(
-        max_length=50,
-        blank=True,
-        null=True
     )
 
     def __str__(self) -> str:
