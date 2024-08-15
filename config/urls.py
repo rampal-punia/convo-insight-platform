@@ -15,6 +15,7 @@ urlpatterns = [
     path('accounts/', include('allauth.urls')),
     path('admin/', admin.site.urls),
     path('dashboard/', include('dashboard.urls'), name='dashboard'),
+    path('convochat/', include('convochat.urls'), name='convochat'),
 ]
 
 if settings.DEBUG:
