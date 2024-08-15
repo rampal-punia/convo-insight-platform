@@ -112,6 +112,9 @@ convo-insight-platform/
 │   ├── asgi.py
 │   └── wsgi.py
 ├── apps/                  # Django related apps
+│   ├── accounts/          # App for conversation analysis
+│   │   ├── models.py
+│   │   ├── views.py
 │   ├── analysis/          # App for conversation analysis
 │   │   ├── models.py
 │   │   ├── views.py
