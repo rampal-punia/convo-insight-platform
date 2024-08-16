@@ -29,7 +29,7 @@ class ConversationListView(LoginRequiredMixin, generic.ListView):
 
 class ConversationDetailView(LoginRequiredMixin, generic.DetailView):
     model = Conversation
-    template_name = 'convochat/conversation_detail.html'
+    template_name = 'convochat/convochat.html'
     context_object_name = 'conversation'
 
     def get_object(self, queryset=None):
@@ -41,7 +41,7 @@ class ConversationDetailView(LoginRequiredMixin, generic.DetailView):
             return Conversation.objects.create(
                 user=self.request.user,
                 id=uuid.uuid4(),
-                status='Active'
+                status='AC'
             )
 
     def get_context_data(self, **kwargs):
@@ -58,7 +58,7 @@ class ConversationDetailView(LoginRequiredMixin, generic.DetailView):
         if 'pk' not in kwargs:
             # If no pk is provided, create a new conversation and redirect
             new_conversation = self.get_object()
-            return redirect(reverse('conversation_detail', kwargs={'pk': new_conversation.id}))
+            return redirect(reverse('convochat:conversation_detail_url', kwargs={'pk': new_conversation.id}))
         return super().get(request, *args, **kwargs)
 
 

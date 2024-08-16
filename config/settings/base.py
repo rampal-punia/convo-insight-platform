@@ -25,7 +25,7 @@ ALLOWED_HOSTS = [
 ]
 
 DJANGO_APPS = [
-    # 'daphne',
+    'daphne',
     'jazzmin',
     'channels',
     'django.contrib.admin',
@@ -89,12 +89,15 @@ AUTHENTICATION_BACKENDS = (
 )
 
 SITE_ID = 1
+
 # django-allauth settings
 ACCOUNT_EMAIL_REQUIRED = True
 ACCOUNT_USERNAME_REQUIRED = False
 ACCOUNT_AUTHENTICATION_METHOD = 'email'
 # ACCOUNT_EMAIL_VERIFICATION = 'mandatory'
 LOGIN_REDIRECT_URL = '/dashboard/'  # Adjust as needed
+LOGIN_URL = 'accounts/login/'
+LOGOUT_REDIRECT_URL = None
 
 ROOT_URLCONF = 'config.urls'
 
@@ -117,7 +120,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
-# ASGI_APPLICATION = 'config.asgi.application'
+ASGI_APPLICATION = 'config.asgi.application'
 
 # CORS_ALLOW_ALL_ORIGINS = True
 
@@ -184,13 +187,10 @@ MEDIA_ROOT = BASE_DIR / "media"
 CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
 CRISPY_TEMPLATE_PACK = "bootstrap5"
 
-# LOGIN_REDIRECT_URL = '/'
-# LOGOUT_REDIRECT_URL = None
-# LOGIN_URL = '/da/accounts/login/'
 
-# HUGGINGFACE_API_TOKEN = os.getenv('HUGGINGFACEHUB_API_TOKEN')
-# CHUNK_SIZE = 1000
-# CHUNK_OVERLAP = 80
+HUGGINGFACE_API_TOKEN = config('HUGGINGFACEHUB_API_TOKEN')
+CHUNK_SIZE = 1000
+CHUNK_OVERLAP = 80
 
 # Celery settings
 CELERY_BROKER_URL = 'redis://localhost:6379/0'  # Example using Redis
