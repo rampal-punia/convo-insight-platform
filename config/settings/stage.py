@@ -1,3 +1,5 @@
+# config/settings/stage.py
+
 from .base import *  # noqa
 from decouple import config
 

@@ -1,3 +1,5 @@
+# apps/analysis/models.py
+
 from django.db import models
 from django.contrib.auth import get_user_model
 
@@ -27,6 +29,7 @@ class ConversationMetrics(models.Model):
     average_response_time = models.DurationField(null=True, blank=True)
     average_accuracy_score = models.FloatField(null=True, blank=True)
     average_relevance_score = models.FloatField(null=True, blank=True)
+    sentiment_score = models.FloatField(null=True, blank=True)  # New field
     feedback = models.TextField(blank=True)
     evaluated_at = models.DateTimeField(auto_now_add=True)
 

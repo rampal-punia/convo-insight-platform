@@ -1,6 +1,4 @@
-'''
-Convochat: Chat consumer for real-time interaction with LLM
-'''
+# apps/convochat/consumers.py
 
 import json
 from asgiref.sync import sync_to_async
@@ -14,8 +12,8 @@ from channels.db import database_sync_to_async
 from django.conf import settings
 
 from .utils import configure_llm
-from .models import Conversation, Message, UserMessage
-from .models import AIMessage as convo_ai_msg
+from .models import Conversation, UserMessage, AIMessage as convo_ai_msg
+# from .tasks import process_ai_response, process_user_message
 
 # Title generation API
 API_URL = "https://api-inference.huggingface.co/models/czearing/article-title-generator"
@@ -62,7 +60,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.process_response(fe_message, conversation, user_message)
 
     async def process_response(self, fe_message, conversation, user_message):
-        llm_response_chunks = []
         try:
             history = await get_conversation_history(conversation.id)
             history_str = '\n'.join(
@@ -72,6 +69,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 'history': history_str,
                 'input': fe_message
             }
+
+            # Process user message
+            # user_message_id, sentiment, intent = await sync_to_async(process_user_message.delay)(conversation.id, fe_message)
+
+            # Generate AI response
+            llm_response_chunks = []
             async for chunk in configure_llm.chain.astream_events(input_with_history, version='v2', include_names=['Assistant']):
                 if chunk['event'] in ['on_parser_start', 'on_parser_stream']:
                     await self.send(text_data=json.dumps(chunk))
@@ -82,6 +85,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
             full_response = ''.join(llm_response_chunks)
 
+            # Process AI response
+            # ai_message_id, topics = await sync_to_async(process_ai_response.delay)(conversation.id, full_response, user_message_id)
+
+            # Generate title if needed
             try:
                 if conversation.title == 'Untitled Conversation' or conversation.title is None:
                     title = await generate_title(full_response)
@@ -91,10 +98,20 @@ class ChatConsumer(AsyncWebsocketConsumer):
                         'message': title
                     }))
             except Exception as ex:
-                print(f"Error during Conversation Title generation: {ex}")
+                print(f"Unable to generate title: {ex}")
+
             if not full_response:
                 full_response = "I apologize, but I couldn't generate a response. Please try asking your question again."
-            await self.save_ai_message(conversation, full_response, is_from_user=False, in_reply_to=user_message)
+
+            ai_message = await self.save_ai_message(conversation, full_response, is_from_user=False, in_reply_to=user_message)
+
+            # await self.send(text_data=json.dumps({
+            #     'type': 'ai_response',
+            #     'message': full_response,
+            #     'sentiment': sentiment,
+            #     'intent': intent,
+            #     'topics': topics
+            # }))
         except Exception as ex:
             print(f"Error during LLM response processing: {ex}")
 
@@ -130,6 +147,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
             is_from_user=is_from_user,
             in_reply_to=in_reply_to,
         )
+
+    @database_sync_to_async
+    def generate_recommendations(self, conversations, recommendations):
+        # Implement logic to generate recommendations based on the conversation and response
+        # This is a placeholder and should be replaced with actual recommendation logic
+        return [{"content": "Sample recommendation", "confidence_score": 0.8}]
 
 
 @database_sync_to_async
