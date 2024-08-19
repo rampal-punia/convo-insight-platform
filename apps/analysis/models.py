@@ -17,6 +17,7 @@ class LLMAgentPerformance(models.Model):
     feedback = models.TextField(blank=True)
     evaluated_at = models.DateTimeField(auto_now_add=True)
     issue_resolved = models.BooleanField(default=False)
+    overall_score = models.FloatField(null=True, blank=True)
 
     def __str__(self):
         return f"LLM Agent Performance in conversation {self.conversation.id}"

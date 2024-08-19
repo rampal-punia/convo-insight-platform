@@ -1,4 +1,4 @@
-# ml_model/sentiment_analysis/sentiment_analyzer.py
+# apps/convochat/sentiment_analysis/sentiment_analyzer.py
 
 import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification

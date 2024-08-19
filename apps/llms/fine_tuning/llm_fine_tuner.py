@@ -1,4 +1,4 @@
-# ml_model/fine_tuning/llm_fine_tuner.py
+# apps/llms/fine_tuning/llm_fine_tuner.py
 
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, Trainer

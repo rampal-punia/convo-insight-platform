@@ -7,7 +7,8 @@ from django.views import generic
 
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse, reverse_lazy
-from .models import Conversation, Message
+from .models import Conversation, UserMessage, Message
+from analysis.models import IntentPrediction, TopicDistribution
 
 
 class ConvoChatView(LoginRequiredMixin, generic.View):
@@ -69,3 +70,49 @@ class ConversationDeleteView(LoginRequiredMixin, generic.DeleteView):
     model = Conversation
     template_name = 'convochat/conversation_confirm_delete.html'
     success_url = reverse_lazy('convochat:conversation_list_url')
+
+
+class ConversationSentimentView(LoginRequiredMixin, generic.DetailView):
+    model = Conversation
+    template_name = 'convochat/conversation_sentiment.html'
+    context_object_name = 'conversation'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+
+        conversation = self.get_object()
+        metrices = conversation.metrics
+
+        context['sentiment_score'] = metrices.sentiment_score if metrices else None
+        return context
+
+
+class ConversationIntentView(LoginRequiredMixin, generic.DetailView):
+    model = Conversation
+    template_name = 'convochat/conversation_intent.html'
+    context_object_name = 'conversation'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        conversation = self.get_object()
+        user_messages = UserMessage.objects.filter(conversation=conversation)
+        intent_predictions = IntentPrediction.objects.filter(
+            message__in=user_messages)
+
+        context['intent_predictions'] = intent_predictions
+        return context
+
+
+class ConversationTopicView(LoginRequiredMixin, generic.DetailView):
+    model = Conversation
+    template_name = 'convochat/conversation_topics.html'
+    context_object_name = 'conversation'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        conversation = self.get_object()
+        topic_distributions = TopicDistribution.objects.filter(
+            conversation=conversation).order_by('-weight')
+
+        context['topic_distributions'] = topic_distributions
+        return context

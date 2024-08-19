@@ -7,8 +7,8 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate, ChatMessagePromptTemplate
 from langchain_huggingface.llms import HuggingFaceEndpoint
 from langchain_core.output_parsers import StrOutputParser
-from ml_models.fine_tuning.llm_fine_tuner import LLMFineTuner
-
+from llms.fine_tuning.llm_fine_tuner import LLMFineTuner
+from django.conf import settings
 
 # def configure_llm(repo_id, max_new_tokens, top_k, temperature, repetition_penalty, use_fine_tuned=True):
 #     '''Create LLM with configurations'''
@@ -48,6 +48,12 @@ def configure_llm(model_name, **kwargs):
     if model_name in huggingface_models:
         return HuggingFaceEndpoint(
             repo_id=huggingface_models[model_name],
+            task='text-generation',
+            **kwargs
+        )
+    if model_name == "fine_tuned":
+        return HuggingFaceEndpoint(
+            repo_id=settings.FINE_TUNED_MODEL_DIR,
             task='text-generation',
             **kwargs
         )

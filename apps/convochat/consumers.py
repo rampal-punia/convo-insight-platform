@@ -11,9 +11,9 @@ from channels.db import database_sync_to_async
 
 from django.conf import settings
 
-from .utils import configure_llm
+from .utils.configure_llm import configure_llm
 from .models import Conversation, UserMessage, AIMessage as convo_ai_msg
-# from .tasks import process_ai_response, process_user_message
+# from .tasks import process_ai_response, process_user_message, analyze_conversation_sentiment
 
 # Title generation API
 API_URL = "https://api-inference.huggingface.co/models/czearing/article-title-generator"
@@ -38,7 +38,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # Get the conversation UUID from the url route
         self.conversation_id = self.scope['url_route']['kwargs'].get(
             'conversation_id')
-
+        # self.llm = configure_llm("fine_tuned", temperature=0.7, max_length=100)
         await self.accept()
         await self.send(text_data=json.dumps({
             'type': 'welcome',
@@ -56,6 +56,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         conversation = await self.get_or_create_conversation(uuid)
         user_message = await self.save_user_message(conversation, fe_message, is_from_user=True)
+
+        # Trigger sentiment analysis task
+        # analyze_conversation_sentiment.delay(conversation.id)
 
         await self.process_response(fe_message, conversation, user_message)
 

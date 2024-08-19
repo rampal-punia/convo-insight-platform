@@ -1,3 +1,5 @@
+# apps/accounts/forms.py
+
 from django.contrib.auth import get_user_model
 from django import forms
 from allauth.account.forms import LoginForm, SignupForm, ResetPasswordForm

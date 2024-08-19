@@ -1,3 +1,5 @@
+# apps/accounts/views.py
+
 from .forms import CustomSignupForm
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views.generic.edit import UpdateView
