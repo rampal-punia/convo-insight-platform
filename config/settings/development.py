@@ -4,7 +4,12 @@ from .base import *
 from decouple import config
 
 
+# SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
+
+# SECURITY WARNING: keep the secret key used in production secret!
+SECRET_KEY = config(
+    'DJANGO_SECRET_KEY', 'django-insecure-p!1w7j+^j5v8y-@$_9j*8mr-)l#$u=08=c)!=(b1dleci18$7+')
 
 INSTALLED_APPS += [
     'debug_toolbar',
@@ -33,6 +38,9 @@ DATABASES = {
         'PORT': config('DB_PORT'),
     }
 }
+
+# For development only. Configure more strictly for production.
+CORS_ALLOW_ALL_ORIGINS = True
 
 DEBUG_TOOLBAR_CONFIG = {
     "SHOW_TOOLBAR_CALLBACK": show_toolbar,

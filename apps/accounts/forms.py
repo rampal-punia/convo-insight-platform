@@ -17,7 +17,8 @@ class CustomLoginForm(LoginForm):
         self.helper.layout = Layout(
             Field('login', placeholder="Email", css_class='mb-3'),
             Field('password', placeholder="Password", css_class='mb-3'),
-            Submit('submit', 'Log In', css_class='btn btn-primary btn-block')
+            Submit('submit', 'Log In',
+                   css_class='btn btn-sm btn-primary btn-block')
         )
 
 
@@ -31,7 +32,8 @@ class CustomSignupForm(SignupForm):
             Field('email', placeholder="Email", css_class='mb-3'),
             Field('password1', placeholder="Password", css_class='mb-3'),
             Field('password2', placeholder="Confirm Password", css_class='mb-3'),
-            Field('submit', "Sign Up", css_class='btn btn-primary btn-block'),
+            Submit('submit', "Sign Up",
+                   css_class='btn btn-sm btn-primary btn-block'),
         )
 
 
@@ -40,10 +42,11 @@ class CustomPasswordResetForm(ResetPasswordForm):
         super(CustomPasswordResetForm, self).__init__(*args, **kwargs)
         self.helper = FormHelper(self)
         self.helper.form_show_labels = False
+        self.helper.form_method = 'post'
         self.helper.layout = Layout(
             Field('email', placeholder="Email", css_class='mb-3'),
             Submit('submit', 'Reset Password',
-                   css_class='btn btn-primary btn-block')
+                   css_class='btn btn-sm btn-primary btn-block')
         )
 
 
@@ -56,10 +59,11 @@ class CustomProfileForm(forms.ModelForm):
         super(CustomProfileForm, self).__init__(*args, **kwargs)
         self.helper = FormHelper(self)
         self.helper.form_show_labels = False
+        self.helper.form_method = 'post'
         self.helper.layout = Layout(
             Field('first_name', placeholder="First Name", css_class='mb-3'),
             Field('last_name', placeholder="Last Name", css_class='mb-3'),
             Field('email', placeholder="Email", css_class='mb-3'),
             Submit('submit', 'Update Profile',
-                   css_class='btn btn-primary btn-block')
+                   css_class='btn btn-sm btn-primary btn-block')
         )

@@ -1,5 +1,3 @@
-# config/settings/base.py
-
 from pathlib import Path
 import sys
 from decouple import config
@@ -7,18 +5,8 @@ from decouple import config
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-# make sure our apps directory is on the python path
-sys.path.append(str(BASE_DIR / "apps"))
-
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/{{ docs_version }}/howto/deployment/checklist/
-
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = config(
-    'DJANGO_SECRET_KEY', 'django-insecure-p!1w7j+^j5v8y-@$_9j*8mr-)l#$u=08=c)!=(b1dleci18$7+')
-
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# Add the 'apps' directory to the Python path
+sys.path.insert(0, str(BASE_DIR / 'apps'))
 
 ALLOWED_HOSTS = [
     "127.0.0.1",
@@ -58,6 +46,7 @@ LOCAL_APPS = [
     'analysis',
     'api',
     'convochat',
+    'common',
     'dashboard',
 ]
 
@@ -76,7 +65,7 @@ MIDDLEWARE = [
     "allauth.account.middleware.AccountMiddleware",
 
     # CROSS Origin
-    # 'corsheaders.middleware.CorsMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
 ]
 
 AUTHENTICATION_BACKENDS = (
@@ -89,19 +78,6 @@ AUTHENTICATION_BACKENDS = (
     # `allauth` specific authentication methods, such as login by email
     'allauth.account.auth_backends.AuthenticationBackend',
 )
-
-SITE_ID = 1
-
-# django-allauth settings
-ACCOUNT_EMAIL_REQUIRED = True
-ACCOUNT_USERNAME_REQUIRED = False
-ACCOUNT_AUTHENTICATION_METHOD = 'email'
-# ACCOUNT_EMAIL_VERIFICATION = 'mandatory'
-LOGIN_REDIRECT_URL = '/dashboard/'  # Adjust as needed
-LOGIN_URL = 'accounts/login/'
-LOGOUT_REDIRECT_URL = None
-
-ROOT_URLCONF = 'config.urls'
 
 TEMPLATES = [
     {
@@ -182,17 +158,39 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
-# Default primary key field type
-# https://docs.djangoproject.com/en/{{ docs_version }}/ref/settings/#default-auto-field
-# AUTH_USER_MODEL = 'users.CustomUser'
+SITE_ID = 1
+
+# django-allauth settings
+# ACCOUNT_EMAIL_REQUIRED = True
+# ACCOUNT_USERNAME_REQUIRED = False
+# ACCOUNT_AUTHENTICATION_METHOD = 'email'
+# ACCOUNT_EMAIL_VERIFICATION = 'mandatory'
+
+# Email
+# EMAIL_BACKEND = config(
+#     'EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
+# EMAIL_HOST = os.getenv('EMAIL_HOST', 'localhost')
+# EMAIL_PORT = os.getenv('EMAIL_PORT', 1025)
+# EMAIL_FROM = os.getenv('EMAIL_FROM', 'noreply@somehost.local')
+
+# EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', True)
+# EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', 'rampalpunia1983@gmail.com')
+# EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', 'password')
+
+
+LOGIN_REDIRECT_URL = '/'  # Adjust as needed
+LOGIN_URL = '/accounts/login/'
+LOGOUT_URL = '/accounts/logout/'
+LOGOUT_REDIRECT_URL = None
+
+ROOT_URLCONF = 'config.urls'
 
 CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
 CRISPY_TEMPLATE_PACK = "bootstrap5"
 
-
 HUGGINGFACE_API_TOKEN = config('HUGGINGFACEHUB_API_TOKEN')
 CHUNK_SIZE = 1000
-CHUNK_OVERLAP = 80
+CHUNK_OVERLAP = 200
 
 # Celery settings
 CELERY_BROKER_URL = 'redis://localhost:6379/0'  # Example using Redis
@@ -207,12 +205,6 @@ CELERY_TASK_TIME_LIMIT = 30 * 60
 
 FINE_TUNED_MODEL_DIR = '/media/llms/'
 
-# CHANNEL_LAYERS = {
-#     "default": {
-#         "BACKEND": "channels.layers.InMemoryChannelLayer"
-#     },
-# }
-
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
@@ -222,27 +214,23 @@ CHANNEL_LAYERS = {
     },
 }
 
-# settings.py
 REST_FRAMEWORK = {
-    'DEFAULT_RENDERER_CLASSES': (
-        'rest_framework.renderers.JSONRenderer',
-    ),
-    'DEFAULT_PARSER_CLASSES': (
-        'rest_framework.parsers.JSONParser',
-    )
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.SessionAuthentication',
+        'rest_framework.authentication.BasicAuthentication',
+    ],
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
-
-# Email
-EMAIL_BACKEND = config(
-    'EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
-# EMAIL_HOST = os.getenv('EMAIL_HOST', 'localhost')
-# EMAIL_PORT = os.getenv('EMAIL_PORT', 1025)
-# EMAIL_FROM = os.getenv('EMAIL_FROM', 'noreply@somehost.local')
-
-# EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', True)
-# EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', 'rampalpunia1983@gmail.com')
-# EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', 'password')
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Chat API',
+    'DESCRIPTION': 'API for the Django Chat application',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+}
 
 
 # Provider specific settings

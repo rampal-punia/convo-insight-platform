@@ -16,7 +16,7 @@ urlpatterns = [
     # path('accounts/logout/', CustomLogoutView.as_view(), name='account_logout'),
     path('accounts/', include('allauth.urls')),
     path('admin/', admin.site.urls),
-    path('dashboard/', include('dashboard.urls'), name='dashboard'),
+    path('', include('dashboard.urls'), name='dashboard'),
     path('convochat/', include('convochat.urls'), name='convochat'),
 ]
 
