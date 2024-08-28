@@ -104,13 +104,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
     #     return user_text
 
     @database_sync_to_async
-    def save_aitext(self, message, input_data):
-        return AIText.objects.create(
-            message=message,
-            content=input_data,
-        )
-
-    @database_sync_to_async
     def save_message(self, conversation, content_type, is_from_user=True, in_reply_to=None):
         return Message.objects.create(
             conversation=conversation,

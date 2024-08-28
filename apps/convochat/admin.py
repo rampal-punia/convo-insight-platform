@@ -30,11 +30,8 @@ class UserTextAdmin(admin.ModelAdmin):
     """
     Admin site configuration for Message model.
     """
-    list_display = ('id', 'conversation',
-                    'is_from_user', 'created', 'sentiment_score')
-    list_filter = (
-        'is_from_user', 'conversation__user__username', 'created')
-    ordering = ('-created',)
+    list_display = ('id', 'message')
+    list_filter = ('id', 'message')
 
 
 @admin.register(AIText)
@@ -42,8 +39,5 @@ class AITextAdmin(admin.ModelAdmin):
     """
     Admin site configuration for Message model.
     """
-    list_display = ('id', 'conversation',
-                    'is_from_user', 'created', 'recommendation')
-    list_filter = (
-        'is_from_user', 'conversation__user__username', 'created')
-    ordering = ('-created',)
+    list_display = ('id', 'message')
+    list_filter = ('id', 'message')

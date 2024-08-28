@@ -3,7 +3,7 @@ import json
 from django.conf import settings
 from langchain_core.messages import HumanMessage, AIMessage
 from channels.db import database_sync_to_async
-from convochat.models import Conversation, Message, UserText
+from convochat.models import Conversation, Message, AIText
 from apps.convochat.utils import configure_llm
 
 
@@ -26,8 +26,8 @@ def get_conversation_history(conversation_id, limit=8):
     conversation = Conversation.objects.get(id=conversation_id)
     messages = conversation.messages.order_by('-created')[:limit]
     return [
-        HumanMessage(content=msg.chat_content.content) if msg.is_from_user else AIMessage(
-            content=msg.chat_content.content)
+        HumanMessage(content=msg.user_text.content) if msg.is_from_user else AIMessage(
+            content=msg.ai_text.content)
         for msg in reversed(messages)
     ]
 
@@ -43,8 +43,8 @@ def save_message(conversation, content_type, is_from_user=True, in_reply_to=None
 
 
 @database_sync_to_async
-def save_chat_message(message, input_data):
-    return UserText.objects.create(
+def save_aitext(message, input_data):
+    return AIText.objects.create(
         message=message,
         content=input_data,
     )
@@ -135,7 +135,7 @@ class TextChatHandler:
                 is_from_user=False,
                 in_reply_to=user_message
             )
-            await save_chat_message(
+            await save_aitext(
                 ai_message,
                 ai_response
             )

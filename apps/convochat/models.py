@@ -89,14 +89,20 @@ class Message(CreationModificationDateBase):
         ]
 
 
-class UserText(Message):
+class UserText(models.Model):
+    message = models.OneToOneField(
+        'convochat.Message',
+        on_delete=models.CASCADE,
+        related_name="user_text",
+        null=True
+    )
     content = models.TextField()
     sentiment_score = models.FloatField(null=True, blank=True)
     intent = models.ForeignKey(
         'Intent',
         on_delete=models.SET_NULL,
         null=True,
-        related_name='user_texts'
+        related_name='user_text'
     )
     primary_topic = models.ForeignKey(
         'Topic',
@@ -106,7 +112,7 @@ class UserText(Message):
     )
 
 
-class AIText(Message):
+class AIText(models.Model):
     '''
     Use case::
 
@@ -122,6 +128,12 @@ class AIText(Message):
         )
     '''
     content = models.TextField(null=True, blank=True)
+    message = models.OneToOneField(
+        'convochat.Message',
+        on_delete=models.CASCADE,
+        related_name="ai_text",
+        null=True
+    )
     confidence_score = models.FloatField(null=True, blank=True)
     recommendation = models.ForeignKey(
         'analysis.Recommendation',
