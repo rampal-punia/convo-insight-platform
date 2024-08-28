@@ -1,7 +1,5 @@
-# apps/convochat/admin.py
-
 from django.contrib import admin
-from .models import Conversation, Message, UserMessage, AIMessage
+from .models import Conversation, Message, UserText, AIText
 
 
 @admin.register(Conversation)
@@ -27,8 +25,8 @@ class MessageAdmin(admin.ModelAdmin):
     ordering = ('-created',)
 
 
-@admin.register(UserMessage)
-class UserMessageAdmin(admin.ModelAdmin):
+@admin.register(UserText)
+class UserTextAdmin(admin.ModelAdmin):
     """
     Admin site configuration for Message model.
     """
@@ -39,8 +37,8 @@ class UserMessageAdmin(admin.ModelAdmin):
     ordering = ('-created',)
 
 
-@admin.register(AIMessage)
-class AIMessageAdmin(admin.ModelAdmin):
+@admin.register(AIText)
+class AITextAdmin(admin.ModelAdmin):
     """
     Admin site configuration for Message model.
     """

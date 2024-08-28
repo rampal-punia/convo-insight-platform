@@ -2,7 +2,7 @@
 
 from django.db.models import Avg
 from django.utils import timezone
-from .models import Conversation, Message, UserMessage, AIMessage, LLMAgentPerformance, ConversationMetrics
+from .models import Conversation, Message, UserText, AIText, LLMAgentPerformance, ConversationMetrics
 from .utils import calculate_accuracy, calculate_relevance, calculate_satisfaction
 
 
@@ -17,7 +17,7 @@ def process_conversation_metrics(conversation_id):
     satisfaction_scores = []
 
     for i, message in enumerate(messages):
-        if isinstance(message, AIMessage):
+        if isinstance(message, AIText):
             # Calculate response time
             if i > 0:
                 response_time = message.created - messages[i-1].created

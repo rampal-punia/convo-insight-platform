@@ -3,8 +3,8 @@ import json
 from django.conf import settings
 from langchain_core.messages import HumanMessage, AIMessage
 from channels.db import database_sync_to_async
-from convochat.models import Conversation, Message, ChatMessage
-from common import configure_llm
+from convochat.models import Conversation, Message, UserText
+from apps.convochat.utils import configure_llm
 
 
 # Summary generation API
@@ -44,7 +44,7 @@ def save_message(conversation, content_type, is_from_user=True, in_reply_to=None
 
 @database_sync_to_async
 def save_chat_message(message, input_data):
-    return ChatMessage.objects.create(
+    return UserText.objects.create(
         message=message,
         content=input_data,
     )

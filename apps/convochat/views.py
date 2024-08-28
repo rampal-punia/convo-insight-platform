@@ -7,7 +7,7 @@ from django.views import generic
 
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse, reverse_lazy
-from .models import Conversation, UserMessage, Message
+from .models import Conversation, UserText, Message
 from analysis.models import IntentPrediction, TopicDistribution
 
 
@@ -95,7 +95,7 @@ class ConversationIntentView(LoginRequiredMixin, generic.DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         conversation = self.get_object()
-        user_messages = UserMessage.objects.filter(conversation=conversation)
+        user_messages = UserText.objects.filter(conversation=conversation)
         intent_predictions = IntentPrediction.objects.filter(
             message__in=user_messages)
 

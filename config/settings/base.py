@@ -46,7 +46,6 @@ LOCAL_APPS = [
     'analysis',
     'api',
     'convochat',
-    'common',
     'dashboard',
 ]
 

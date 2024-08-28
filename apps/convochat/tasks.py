@@ -1,7 +1,5 @@
-# apps/convochat/tasks.py
-
 from celery import shared_task
-from .models import Conversation, UserMessage, AIMessage
+from .models import Conversation, UserText, AIText
 from analysis.models import (
     LLMAgentPerformance,
     ConversationMetrics,
@@ -83,7 +81,7 @@ def analyze_conversation_sentiment(conversation_id):
 
 @shared_task
 def recognize_message_intent(message_id):
-    message = UserMessage.objects.get(id=message_id)
+    message = UserText.objects.get(id=message_id)
     recognizer = IntentRecognizer()
 
     result = recognizer.recognize_intent([message.content])[0]
@@ -102,7 +100,7 @@ def recognize_message_intent(message_id):
 @shared_task
 def save_user_message(conversation_id, content, is_from_user=True, in_reply_to=None):
     conversation = Conversation.objects.get(id=conversation_id)
-    return UserMessage.objects.create(
+    return UserText.objects.create(
         conversation=conversation,
         content=content,
         is_from_user=is_from_user,
@@ -113,7 +111,7 @@ def save_user_message(conversation_id, content, is_from_user=True, in_reply_to=N
 @shared_task
 def save_ai_message(conversation_id, full_response, is_from_user, in_reply_to=None):
     conversation = Conversation.objects.get(id=conversation_id)
-    return AIMessage.objects.create(
+    return AIText.objects.create(
         conversation=conversation,
         content=full_response,
         is_from_user=is_from_user,
@@ -123,7 +121,7 @@ def save_ai_message(conversation_id, full_response, is_from_user, in_reply_to=No
 
 @shared_task
 def save_intent_prediction(message_id, intent):
-    message = UserMessage.objects.get(id=message_id)
+    message = UserText.objects.get(id=message_id)
     IntentPrediction.objects.create(
         message=message,
         intent=intent['intent'],
@@ -172,7 +170,7 @@ def update_conversation_metrics(conversation_id, sentiment_score):
 @shared_task
 def evaluate_llm_performance(conversation_id, ai_message_id):
     conversation = Conversation.objects.get(id=conversation_id)
-    ai_message = AIMessage.objects.get(id=ai_message_id)
+    ai_message = AIText.objects.get(id=ai_message_id)
     user_message = ai_message.in_reply_to
 
     # Calculate response time

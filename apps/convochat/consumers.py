@@ -1,28 +1,11 @@
-# apps/convochat/consumers.py
-
 import json
-from asgiref.sync import sync_to_async
 
-import requests
-from decouple import config
-from langchain_core.messages import HumanMessage, AIMessage
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 
-from django.conf import settings
-
-from .utils.configure_llm import configure_llm
-from .models import Conversation, UserMessage, AIMessage as convo_ai_msg
+from .utils.text_chat_handler import TextChatHandler
+from .models import Conversation, Message, UserText, AIText
 # from .tasks import process_ai_response, process_user_message, analyze_conversation_sentiment
-
-# Title generation API
-API_URL = "https://api-inference.huggingface.co/models/czearing/article-title-generator"
-headers = {"Authorization": f"Bearer {settings.HUGGINGFACE_API_TOKEN}"}
-
-
-async def generate_title(payload):
-    response = await sync_to_async(requests.post)(API_URL, headers=headers, json=payload)
-    return (await sync_to_async(response.json)())[0]['generated_text']
 
 
 class ChatConsumer(AsyncWebsocketConsumer):
@@ -38,7 +21,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # Get the conversation UUID from the url route
         self.conversation_id = self.scope['url_route']['kwargs'].get(
             'conversation_id')
-        # self.llm = configure_llm("fine_tuned", temperature=0.7, max_length=100)
+
         await self.accept()
         await self.send(text_data=json.dumps({
             'type': 'welcome',
@@ -50,73 +33,25 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     async def receive(self, text_data=None):
         '''Run on receiving text data from front-end.'''
+        input_data, conversation, user_message = await self.create_conversation_db(text_data)
+
+        await TextChatHandler.process_text_response(
+            conversation,
+            user_message,
+            input_data,
+            self.send
+        )
+
+    async def create_conversation_db(self, text_data):
         data = json.loads(text_data)
-        fe_message = data.get('message')    # front-end message
+        input_type = data.get('type')   # front-end message
+        input_data = data.get('message')
         uuid = data.get('uuid')
 
         conversation = await self.get_or_create_conversation(uuid)
-        user_message = await self.save_user_message(conversation, fe_message, is_from_user=True)
-
-        # Trigger sentiment analysis task
-        # analyze_conversation_sentiment.delay(conversation.id)
-
-        await self.process_response(fe_message, conversation, user_message)
-
-    async def process_response(self, fe_message, conversation, user_message):
-        try:
-            history = await get_conversation_history(conversation.id)
-            history_str = '\n'.join(
-                [f"{'Human' if isinstance(msg, HumanMessage) else 'AI'}:{msg.content}" for msg in history]
-            )
-            input_with_history = {
-                'history': history_str,
-                'input': fe_message
-            }
-
-            # Process user message
-            # user_message_id, sentiment, intent = await sync_to_async(process_user_message.delay)(conversation.id, fe_message)
-
-            # Generate AI response
-            llm_response_chunks = []
-            async for chunk in configure_llm.chain.astream_events(input_with_history, version='v2', include_names=['Assistant']):
-                if chunk['event'] in ['on_parser_start', 'on_parser_stream']:
-                    await self.send(text_data=json.dumps(chunk))
-
-                if chunk.get('event') == 'on_parser_end':
-                    output = chunk.get('data', {}).get('output', '')
-                    llm_response_chunks.append(output)
-
-            full_response = ''.join(llm_response_chunks)
-
-            # Process AI response
-            # ai_message_id, topics = await sync_to_async(process_ai_response.delay)(conversation.id, full_response, user_message_id)
-
-            # Generate title if needed
-            try:
-                if conversation.title == 'Untitled Conversation' or conversation.title is None:
-                    title = await generate_title(full_response)
-                    await save_conversation_title(conversation, title)
-                    await self.send(text_data=json.dumps({
-                        'type': 'title',
-                        'message': title
-                    }))
-            except Exception as ex:
-                print(f"Unable to generate title: {ex}")
-
-            if not full_response:
-                full_response = "I apologize, but I couldn't generate a response. Please try asking your question again."
-
-            ai_message = await self.save_ai_message(conversation, full_response, is_from_user=False, in_reply_to=user_message)
-
-            # await self.send(text_data=json.dumps({
-            #     'type': 'ai_response',
-            #     'message': full_response,
-            #     'sentiment': sentiment,
-            #     'intent': intent,
-            #     'topics': topics
-            # }))
-        except Exception as ex:
-            print(f"Error during LLM response processing: {ex}")
+        user_message = await self.save_message(conversation, input_type, is_from_user=True)
+        await self.save_usertext(user_message, input_data)
+        return input_data, conversation, user_message
 
     @database_sync_to_async
     def get_or_create_conversation(self, uuid):
@@ -134,51 +69,52 @@ class ChatConsumer(AsyncWebsocketConsumer):
         return conversation
 
     @database_sync_to_async
-    def save_user_message(self, conversation, content, is_from_user=True, in_reply_to=None):
-        return UserMessage.objects.create(
+    def save_usertext(self, message, input_data):
+        return UserText.objects.create(
+            message=message,
+            content=input_data,
+        )
+
+    # @database_sync_to_async
+    # def process_user_message(self, content):
+    #     # Perform immediate analysis
+    #     sentiment_score = analyze_sentiment(content)
+    #     intent = predict_intent(content)
+    #     topics = generate_topic_distribution(content)
+
+    #     # Save UserText with analysis results
+    #     user_text = UserText.objects.create(
+    #         conversation=self.conversation,
+    #         content=content,
+    #         is_from_user=True,
+    #         sentiment_score=sentiment_score,
+    #         intent=intent,
+    #         # Set the highest weighted topic as primary
+    #         primary_topic=max(topics, key=lambda x: x[1])[0]
+    #     )
+
+    #     # Save topic distributions
+    #     for topic, weight in topics:
+    #         TopicDistribution.objects.create(
+    #             user_text=user_text,
+    #             topic=topic,
+    #             weight=weight
+    #         )
+
+    #     return user_text
+
+    @database_sync_to_async
+    def save_aitext(self, message, input_data):
+        return AIText.objects.create(
+            message=message,
+            content=input_data,
+        )
+
+    @database_sync_to_async
+    def save_message(self, conversation, content_type, is_from_user=True, in_reply_to=None):
+        return Message.objects.create(
             conversation=conversation,
-            content=content,
+            content_type=content_type,
             is_from_user=is_from_user,
             in_reply_to=in_reply_to
         )
-
-    @database_sync_to_async
-    def save_ai_message(self, conversation, full_response, is_from_user, in_reply_to=None):
-        return convo_ai_msg.objects.create(
-            conversation=conversation,
-            content=full_response,
-            is_from_user=is_from_user,
-            in_reply_to=in_reply_to,
-        )
-
-    @database_sync_to_async
-    def generate_recommendations(self, conversations, recommendations):
-        # Implement logic to generate recommendations based on the conversation and response
-        # This is a placeholder and should be replaced with actual recommendation logic
-        return [{"content": "Sample recommendation", "confidence_score": 0.8}]
-
-
-@database_sync_to_async
-def save_conversation_title(conversation, title):
-    conversation.title = title
-    conversation.save()
-
-
-@database_sync_to_async
-def get_conversation_history(conversation_id, limit=8):
-    """Get the last [limit] messages from database 
-
-    Args:
-        conversation_id (uuid): the conversation UUID
-        limit (int, optional): the number of previous messages. Defaults to 8.
-
-    Returns:
-        queryset: last [limit] messages from the conversation
-    """
-    conversation = Conversation.objects.get(id=conversation_id)
-    messages = conversation.messages.order_by('-created')[:limit]
-    return [
-        HumanMessage(content=msg.content) if msg.is_from_user else AIMessage(
-            content=msg.content)
-        for msg in reversed(messages)
-    ]

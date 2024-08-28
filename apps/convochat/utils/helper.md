@@ -1,6 +1,6 @@
 Examples and use cases for these two fields to illustrate how they can be used in the ConvoInsight platform.
 
-1. `recommendation` field in AIMessage model:
+1. `recommendation` field in AIText model:
 ```python
 recommendation = models.ForeignKey('analysis.Recommendation', on_delete=models.SET_NULL, null=True, blank=True, related_name='applied_messages')
 ```
@@ -14,7 +14,7 @@ a) Tracking Applied Recommendations:
    ```python
    # When an agent applies a recommendation
    recommendation = Recommendation.objects.get(id=1)  # Get a specific recommendation
-   ai_message = AIMessage.objects.create(
+   ai_message = AIText.objects.create(
        conversation=conversation,
        content="Thank you for your patience. I understand your frustration with the delayed shipment. Let me check the status for you right away.",
        is_from_user=False,
@@ -29,15 +29,15 @@ b) Analyzing Recommendation Effectiveness:
    ```python
    # Analyzing the effectiveness of recommendations
    total_recommendations = Recommendation.objects.count()
-   applied_recommendations = AIMessage.objects.exclude(recommendation=None).count()
+   applied_recommendations = AIText.objects.exclude(recommendation=None).count()
    application_rate = applied_recommendations / total_recommendations
 
    # Get all messages that applied recommendations
-   applied_messages = AIMessage.objects.filter(recommendation__isnull=False)
+   applied_messages = AIText.objects.filter(recommendation__isnull=False)
    
    # Analyze customer responses to these messages
    for message in applied_messages:
-       next_user_message = UserMessage.objects.filter(
+       next_user_message = UserText.objects.filter(
            conversation=message.conversation,
            created__gt=message.created
        ).first()

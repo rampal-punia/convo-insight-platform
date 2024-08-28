@@ -42,6 +42,7 @@ class Conversation(CreationModificationDateBase):
         blank=True,
         related_name='conversations',
     )
+    summary = models.TextField(null=True, blank=True)
 
     class Meta:
         ordering = ['-created']
@@ -91,6 +92,18 @@ class Message(CreationModificationDateBase):
 class UserText(Message):
     content = models.TextField()
     sentiment_score = models.FloatField(null=True, blank=True)
+    intent = models.ForeignKey(
+        'Intent',
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='user_texts'
+    )
+    primary_topic = models.ForeignKey(
+        'Topic',
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='primary_user_texts'
+    )
 
 
 class AIText(Message):
@@ -100,7 +113,7 @@ class AIText(Message):
         # When an agent applies a recommendation
         recommendation = Recommendation.objects.get(id=1)  # Get a specific recommendation
 
-        ai_message = AIMessage.objects.create(
+        ai_message = AIText.objects.create(
         conversation=conversation,
         content="Thank you for your patience. I understand your frustration with the delayed shipment. 
         Let me check the status for you right away.",

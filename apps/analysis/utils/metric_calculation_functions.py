@@ -1,4 +1,4 @@
-from .models import UserMessage, Sentiment
+from .models import UserText, Sentiment
 
 
 def calculate_accuracy(ai_message):
@@ -14,7 +14,7 @@ def calculate_relevance(ai_message):
     # the semantic similarity between the user's question and the AI's response.
     # For this example, we'll use a simple keyword matching approach.
     user_message = ai_message.in_reply_to
-    if user_message and isinstance(user_message, UserMessage):
+    if user_message and isinstance(user_message, UserText):
         common_words = set(user_message.content.lower().split()) & set(
             ai_message.content.lower().split())
         return len(common_words) / len(set(user_message.content.lower().split()))
@@ -24,7 +24,7 @@ def calculate_relevance(ai_message):
 def calculate_satisfaction(ai_message):
     # In a real-world scenario, this might be based on explicit user feedback.
     # For this example, we'll use the sentiment of the user's next message as a proxy for satisfaction.
-    next_user_message = UserMessage.objects.filter(
+    next_user_message = UserText.objects.filter(
         conversation=ai_message.conversation,
         created__gt=ai_message.created
     ).first()
