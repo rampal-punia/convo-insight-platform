@@ -1,5 +1,3 @@
-# apps/convochat/models.py
-
 import uuid
 
 from django.db import models
@@ -53,16 +51,26 @@ class Conversation(CreationModificationDateBase):
         ]
 
     def __str__(self) -> str:
-        return f"{self.user.username} - {self.title}"
+        return f"{self.user.username} - {self.title[:40]}"
 
 
 class Message(CreationModificationDateBase):
+    class ContentType(models.TextChoices):
+        AUDIO = 'AU', _('Audio')
+        DOCUMENT = 'DO', _('Document')
+        IMAGE = 'IM', _('Image')
+        TEXT = 'TE', _('Text')
+
     conversation = models.ForeignKey(
         'convochat.Conversation',
         on_delete=models.CASCADE,
         related_name='messages'
     )
-    content = models.TextField()
+    content_type = models.CharField(
+        max_length=2,
+        choices=ContentType.choices,
+        default=ContentType.TEXT
+    )
     is_from_user = models.BooleanField(default=True)
     in_reply_to = models.ForeignKey(
         'self',
@@ -76,35 +84,16 @@ class Message(CreationModificationDateBase):
         ordering = ['created']
         indexes = [
             models.Index(fields=['conversation', 'created']),
-            models.Index(fields=['is_from_user'])
+            models.Index(fields=['is_from_user', 'created'])
         ]
 
-    def __str__(self) -> str:
-        return f"{self.id} - {self.content[:50]}"
+
+class UserText(Message):
+    content = models.TextField()
+    sentiment_score = models.FloatField(null=True, blank=True)
 
 
-class UserMessage(Message):
-    sentiment_score = models.FloatField(
-        null=True,
-        blank=True
-    )
-    intent = models.ForeignKey(
-        'Intent',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='mesages'
-    )
-    topic = models.ForeignKey(
-        'Topic',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='messages'
-    )
-
-
-class AIMessage(Message):
+class AIText(Message):
     '''
     Use case::
 
@@ -119,6 +108,8 @@ class AIMessage(Message):
         recommendation=recommendation
         )
     '''
+    content = models.TextField(null=True, blank=True)
+    confidence_score = models.FloatField(null=True, blank=True)
     recommendation = models.ForeignKey(
         'analysis.Recommendation',
         on_delete=models.SET_NULL,
@@ -178,7 +169,7 @@ class Sentiment(models.Model):
     )
     score = models.FloatField()
     message = models.OneToOneField(
-        UserMessage,
+        UserText,
         on_delete=models.CASCADE,
         related_name='detailed_sentiment'
     )

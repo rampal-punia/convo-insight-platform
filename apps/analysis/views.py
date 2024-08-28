@@ -1,6 +1,6 @@
 # apps/analysis/views.py
 
-from .agent_performance.evaluator import AgentPerformanceEvaluator
+from .utils.agent_performance_evaluator import AgentPerformanceEvaluator
 from convochat.models import Conversation
 from analysis.models import LLMAgentPerformance
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -8,7 +8,7 @@ from django.views import generic
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from .models import Conversation
-from .utils.performance_metric_calculation import process_conversation_metrics
+from utils.performance_metric_calculation import process_conversation_metrics
 
 
 @require_POST

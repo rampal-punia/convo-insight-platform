@@ -182,3 +182,4 @@ local_folder/
 staticfiles
 staticfiles/
 script.*
+file_name_converter.ipynb

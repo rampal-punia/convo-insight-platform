@@ -1,5 +1,3 @@
-# apps/analysis/models.py
-
 from django.db import models
 from django.contrib.auth import get_user_model
 
@@ -52,7 +50,10 @@ class Recommendation(models.Model):
 
 class TopicDistribution(models.Model):
     conversation = models.ForeignKey(
-        'convochat.Conversation', on_delete=models.CASCADE, related_name='topic_distributions')
+        'convochat.Conversation',
+        on_delete=models.CASCADE,
+        related_name='topic_distributions'
+    )
     topic = models.ForeignKey('convochat.Topic', on_delete=models.CASCADE)
     weight = models.FloatField()
 
@@ -65,7 +66,10 @@ class TopicDistribution(models.Model):
 
 class IntentPrediction(models.Model):
     message = models.OneToOneField(
-        'convochat.UserMessage', on_delete=models.CASCADE, related_name='intent_prediction')
+        'convochat.UserText',
+        on_delete=models.CASCADE,
+        related_name='intent_prediction'
+    )
     intent = models.ForeignKey('convochat.Intent', on_delete=models.CASCADE)
     confidence_score = models.FloatField()
 

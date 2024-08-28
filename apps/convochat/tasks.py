@@ -9,13 +9,13 @@ from analysis.models import (
     TopicDistribution,
     IntentPrediction
 )
-from analysis.agent_performance.evaluator import AgentPerformanceEvaluator
+from apps.analysis.utils.agent_performance_evaluator import AgentPerformanceEvaluator
 from .models import Intent, Topic
-from .utils.nlp_helper import perform_sentiment_analysis, detect_intent, extract_topics
-from .sentiment_analysis.sentiment_analyzer import SentimentAnalyzer
-from .intent_recognition.intent_recognizer import IntentRecognizer
+from utils.nlp_helper import perform_sentiment_analysis, detect_intent, extract_topics
+from utils.sentiment_analyzer import SentimentAnalyzer
+from utils.intent_recognizer import IntentRecognizer
 from django.db import transaction
-from .topic_modelling.topic_modeler import TopicModeler
+from utils.topic_modeler import TopicModeler
 from django.utils import timezone
 
 
