@@ -27,7 +27,7 @@ class GeneralConversation(CreationModificationDateBase):
     user = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
-        related_name='conversations',
+        related_name='general_conversations',
     )
     status = models.CharField(
         max_length=2,
@@ -64,6 +64,7 @@ class GeneralMessage(CreationModificationDateBase):
         choices=ContentType.choices,
         default=ContentType.TEXT
     )
+    content = models.TextField(default='No Text Data Found')
     is_from_user = models.BooleanField(default=True)
     in_reply_to = models.ForeignKey(
         'self',
@@ -81,13 +82,12 @@ class GeneralMessage(CreationModificationDateBase):
         ]
 
 
-class ChatMessage(models.Model):
+class AudioMessage(models.Model):
     message = models.OneToOneField(
         'GeneralMessage',
         on_delete=models.CASCADE,
-        related_name="chat_content"
+        related_name='audio_content'
     )
-    content = models.TextField(default='No Text Data Found')
-
-    def __str__(self) -> str:
-        return f"{self.id} - {self.content[:50]}"
+    audio_file = models.FileField(upload_to='voice_messages/')
+    transcript = models.TextField()
+    duration = models.FloatField()  # in seconds

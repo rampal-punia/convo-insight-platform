@@ -47,6 +47,7 @@ LOCAL_APPS = [
     'api',
     'convochat',
     'dashboard',
+    'general_assistant',
     'orders',
     'products',
 ]
@@ -189,7 +190,7 @@ ROOT_URLCONF = 'config.urls'
 CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
 CRISPY_TEMPLATE_PACK = "bootstrap5"
 
-HUGGINGFACE_API_TOKEN = config('HUGGINGFACEHUB_API_TOKEN')
+HUGGINGFACEHUB_API_TOKEN = config('HUGGINGFACEHUB_API_TOKEN')
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
 

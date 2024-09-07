@@ -18,6 +18,8 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('dashboard.urls'), name='dashboard'),
     path('convochat/', include('convochat.urls'), name='convochat'),
+    path('general_assistant/', include('general_assistant.urls'),
+         name='general_assistant'),
 ]
 
 if settings.DEBUG:

@@ -1,63 +1,173 @@
+from django.conf import settings
+import requests
+from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_core.runnables import RunnablePassthrough
+from langchain_community.chat_message_histories import RedisChatMessageHistory
 from decouple import config
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_huggingface.llms import HuggingFaceEndpoint
 # from langchain_core.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 from langchain_core.output_parsers import StrOutputParser
-HUGGINGFACE_API_TOKEN = config('HUGGINGFACEHUB_API_TOKEN')
+HUGGINGFACEHUB_API_TOKEN = config('HUGGINGFACEHUB_API_TOKEN')
 
 
-def configure_llm(model_name, **kwargs):
-    '''Create LLM with configurations'''
-    huggingface_models = {
+class ExternalAPIs:
+    @staticmethod
+    def generate_summary(payload):
+        API_URL = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
+        headers = {"Authorization": f"Bearer {settings.HUGGINGFACEHUB_API_TOKEN}"}
+        response = requests.post(API_URL, headers=headers, json=payload)
+        return response.json()
+
+    @staticmethod
+    def generate_title(payload):
+        API_URL = "https://api-inference.huggingface.co/models/czearing/article-title-generator"
+        headers = {"Authorization": f"Bearer {settings.HUGGINGFACEHUB_API_TOKEN}"}
+        response = requests.post(API_URL, headers=headers, json=payload)
+        return response.json()
+
+
+class LLMConfig:
+    HUGGINGFACE_MODELS = {
         "Mistral-7B": "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3",
         "Mixtral-8x7B": "https://api-inference.huggingface.co/models/mistralai/Mixtral-8x7B-Instruct-v0.1",
+        "Mixtral-8x22B": "https://api-inference.huggingface.co/models/mistralai/Mixtral-8x22B-Instruct-v0.1",
         "Mistral-Nemo": "https://api-inference.huggingface.co/models/mistralai/Mistral-Nemo-Instruct-2407",
     }
 
-    if model_name in huggingface_models:
+    @classmethod
+    def configure_llm(cls, model_name, **kwargs):
+        if model_name not in cls.HUGGINGFACE_MODELS:
+            raise ValueError(f"Unsupported model: {model_name}")
+
         return HuggingFaceEndpoint(
-            endpoint_url=huggingface_models[model_name],
+            endpoint_url=cls.HUGGINGFACE_MODELS[model_name],
             task='text-generation',
+            huggingfacehub_api_token=settings.HUGGINGFACEHUB_API_TOKEN,
             **kwargs
         )
-    else:
-        raise ValueError(f"Unsupported model: {model_name}")
+
+    @staticmethod
+    def get_llm(model_name="Mixtral-8x7B", temperature=0.04, tokens=1024, top_k=20, top_p=0.85,
+                typical_p=0.95, repetition_penalty=1.03, is_streaming=True):
+        return LLMConfig.configure_llm(
+            model_name=model_name,
+            max_new_tokens=tokens,
+            top_k=top_k,
+            top_p=top_p,
+            typical_p=typical_p,
+            temperature=temperature,
+            repetition_penalty=repetition_penalty,
+            streaming=is_streaming,
+        )
 
 
-def create_chain(prompt, llm, run_name):
-    '''Creating LLM chain'''
-    output_parser = StrOutputParser()
-    return prompt | llm.with_config({'run_name': 'model'}) | output_parser.with_config({'run_name': run_name})
+class CustomPromptTemplates:
+    @staticmethod
+    def get_chat_prompt():
+        return ChatPromptTemplate.from_messages([
+            ("system", "You are a helpful assistant."),
+            ('human',
+             "Conversation history:\n{history}\n\nNew User message: {input}"),
+            ("human", "Now, respond to the new message.")
+        ])
+
+    @staticmethod
+    def get_summarizer_prompt():
+        return ChatPromptTemplate.from_messages([
+            ("system", "You are a helpful summarizer."),
+            ("human", "Now, summarize these given paragraphs: {input}.")
+        ])
+
+    @staticmethod
+    def get_doc_prompt():
+        return ChatPromptTemplate.from_messages([
+            ("system", "You are an AI assistant helping to answer questions based on a given document. Use the following context to answer the user's question. If you cannot answer the question based on the context, say that you don't have enough information to answer accurately."),
+            ('human',
+             "Related Context:\n{context}\n\nNew User message: {input}"),
+            ("human", "Now, respond to the new message.")
+        ])
+
+    @staticmethod
+    def get_doc_prompt_with_history():
+        return ChatPromptTemplate.from_messages([
+            ("system", "You are an AI assistant helping to answer, in short (150 to 200 words only), the questions based on a given document. Use the following context to answer the user's question. If you cannot answer the question based on the context, say that you don't have enough information to answer accurately."),
+            ('human',
+             "Conversation history:\n{history}\n\nNew User message: {input}"),
+            ('human', "Related Context:\n{context}"),
+            ("human", "Now, respond to the new message.")
+        ])
 
 
-chat_prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a helpful assistant."),
-    ('human', "Conversation history:\n{history}\n\nNew User message: {input}"),
-    ("human", "Now, respond to the new message.")
-])
+class ChainBuilder:
+    @staticmethod
+    def create_chat_chain(prompt, llm, run_name):
+        output_parser = StrOutputParser()
+        return prompt | llm.with_config({'run_name': 'model'}) | output_parser.with_config({'run_name': run_name})
 
-doc_prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are an AI assistant helping to answer questions based on a given document. Use the following context to answer the user's question. If you cannot answer the question based on the context, say that you don't have enough information to answer accurately."),
-    ('human', "Conversation history:\n{history}\n\nNew User message: {input}"),
-    ('human', "Related Context:\n{context}"),
-    ("human", "Now, respond to the new message.")
-])
+    @staticmethod
+    def create_qa_chain(retriever, prompt, llm, output_parser):
+        return (
+            {
+                "context": retriever,
+                # "context": retriever | DocumentUtils.format_docs,
+                "input": RunnablePassthrough(),
+            }
+            | prompt
+            | llm.with_config({'run_name': 'model'})
+            | output_parser
+        )
 
-# Example usage
-# callbacks = [StreamingStdOutCallbackHandler()]
-llm = configure_llm(
-    "Mixtral-8x7B",
-    max_new_tokens=512,
-    top_k=20,
-    top_p=0.85,
-    typical_p=0.95,
-    temperature=0.01,
-    repetition_penalty=1.03,
-    # callbacks=callbacks,
-    streaming=True,
-    huggingfacehub_api_token=HUGGINGFACE_API_TOKEN
-)
+    @staticmethod
+    def create_doc_chain(retrieved_docs, prompt, llm, output_parser, run_name):
+        output_parser = StrOutputParser()
+        chain = (
+            RunnablePassthrough.assign(context=retrieved_docs)
+            | prompt
+            | llm.with_config({'run_name': 'model'})
+            | output_parser.with_config({'run_name': run_name})
+        )
+        return RunnableWithMessageHistory(
+            chain,
+            RedisChatMessageHistory,
+            input_messages_key="question",
+            history_messages_key="chat_history",
+        )
 
-chain = create_chain(chat_prompt, llm, "Assistant")
 
-doc_chain = create_chain(doc_prompt, llm, "Assistant")
+class LLMInvoker:
+    @staticmethod
+    def invoke_llm(memory_chain, user_question: str = 'What is modern science', session_id='123456789'):
+        return memory_chain.invoke(user_question)
+        # return memory_chain.invoke(
+        #     {"question": user_question},
+        #     config={"configurable": {"session_id": session_id}},
+        # )
+
+
+class DocumentUtils:
+    @staticmethod
+    def get_sources(docs):
+        return [", ".join([doc.metadata["source"] for doc in docs])]
+
+    @staticmethod
+    def format_docs(docs):
+        # DocumentUtils.get_sources(docs)
+        return "\n\n".join([doc.page_content for doc in docs])
+
+
+def main(context=None):
+    prompt = CustomPromptTemplates.get_chat_prompt()
+    llm = LLMConfig.get_llm()
+    if not context:
+        return ChainBuilder.create_chat_chain(
+            prompt=prompt,
+            llm=llm,
+            run_name='Assistant'
+        )
+    return ChainBuilder.create_doc_chain(
+        retrieved_docs=context,
+        prompt=prompt,
+        llm=llm,
+        run_name='Assistant'
+    )

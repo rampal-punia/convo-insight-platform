@@ -12,7 +12,7 @@ from apps.convochat.utils import configure_llm
 
 # Title generation API
 API_URL = "https://api-inference.huggingface.co/models/czearing/article-title-generator"
-headers = {"Authorization": f"Bearer {settings.HUGGINGFACE_API_TOKEN}"}
+headers = {"Authorization": f"Bearer {settings.HUGGINGFACEHUB_API_TOKEN}"}
 
 
 @database_sync_to_async
@@ -87,7 +87,7 @@ class TextChatHandler:
 
                 # Generate AI response
                 llm_response_chunks = []
-                async for chunk in configure_llm.doc_chain.astream_events(input_with_history_and_context, version='v2', include_names=['Assistant']):
+                async for chunk in configure_llm.main(context).astream_events(input_with_history_and_context, version='v2', include_names=['Assistant']):
                     if chunk['event'] in ['on_parser_start', 'on_parser_stream']:
                         await send_method(text_data=json.dumps(chunk))
 
@@ -105,7 +105,7 @@ class TextChatHandler:
                 }
                 # Generate AI response
                 llm_response_chunks = []
-                async for chunk in configure_llm.chain.astream_events(input_with_history, version='v2', include_names=['Assistant']):
+                async for chunk in configure_llm.main().astream_events(input_with_history, version='v2', include_names=['Assistant']):
                     if chunk['event'] in ['on_parser_start', 'on_parser_stream']:
                         await send_method(text_data=json.dumps(chunk))
 
