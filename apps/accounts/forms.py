@@ -63,7 +63,7 @@ class CustomProfileForm(forms.ModelForm):
         self.helper.layout = Layout(
             Field('first_name', placeholder="First Name", css_class='mb-3'),
             Field('last_name', placeholder="Last Name", css_class='mb-3'),
-            Field('email', placeholder="Email", css_class='mb-3'),
+            Field('email', placeholder="Email", css_class='mb-1'),
             Submit('submit', 'Update Profile',
                    css_class='btn btn-sm btn-primary btn-block')
         )

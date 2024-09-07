@@ -4,7 +4,8 @@ from .forms import CustomSignupForm
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views.generic.edit import UpdateView
 from django.urls import reverse_lazy
-from allauth.account.views import LoginView, PasswordResetView, SignupView, LogoutView
+from allauth.account.views import LoginView, PasswordResetView, SignupView
+from django.contrib.auth.views import LogoutView
 from . import forms
 
 
@@ -32,7 +33,11 @@ class CustomProfileView(LoginRequiredMixin, UpdateView):
     def get_object(self):
         return self.request.user
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["account_logout"] = reverse_lazy('account_logout')
+        return context
 
-class CustomLogoutView(LoginRequiredMixin, LogoutView):
-    # Redirect to home page after logout
+
+class CustomLogoutView(LogoutView):
     next_page = reverse_lazy('account_login')

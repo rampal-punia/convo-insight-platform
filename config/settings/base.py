@@ -47,6 +47,8 @@ LOCAL_APPS = [
     'api',
     'convochat',
     'dashboard',
+    'orders',
+    'products',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
