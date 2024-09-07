@@ -19,7 +19,9 @@ class Order(CreationModificationDateBase):
 
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     status = models.CharField(
-        max_length=20, choices=Status.choices, default='pending')
+        max_length=2,
+        choices=Status.choices,
+        default=Status.PENDING)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
 
     def __str__(self):
