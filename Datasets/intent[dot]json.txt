@@ -1,0 +1,13 @@
+About Dataset
+Context
+
+Data for classification, recognition and chatbot development
+Content
+
+Few different examples are included for different intents of the user.
+Acknowledgements
+
+We wouldn't be here without the help of others.
+Inspiration
+
+Your data will be in front of the world's largest data science community. What questions do you want to see answered?
