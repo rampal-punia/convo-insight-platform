@@ -53,7 +53,7 @@ class GeneralConversationDetailView(LoginRequiredMixin, generic.DetailView):
         if 'pk' not in kwargs:
             # If no pk is provided, create a new conversation and redirect
             new_conversation = self.get_object()
-            return redirect(reverse('general_assistant:audio_detail_url', kwargs={'pk': new_conversation.id}))
+            return redirect(reverse('general_assistant:generalchat_detail_url', kwargs={'pk': new_conversation.id}))
         return super().get(request, *args, **kwargs)
 
 

@@ -19,15 +19,6 @@ class Command(BaseCommand):
         for cat in categories:
             Category.objects.create(name=cat)
 
-        # Create Users
-        for _ in range(50):
-            pwd = 12345
-            User.objects.create(
-                username=f"user{_}",
-                password=pwd,
-                # password_confirmation=pwd
-            )
-
         # Create Products
         for _ in range(50):
             Product.objects.create(
@@ -38,8 +29,13 @@ class Command(BaseCommand):
                 stock=random.randint(0, 100)
             )
 
-        # Create orders
+       # Create orders
         users = User.objects.all()
+        if not users.count() > 2:
+            self.stdout.write(self.style.WARNING(
+                'No users found. Please run create_random_users command first.'))
+            return
+
         for _ in range(100):
             user = random.choice(users)
             order = Order.objects.create(

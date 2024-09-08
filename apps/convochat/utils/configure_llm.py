@@ -1,4 +1,5 @@
 from django.conf import settings
+import aiohttp
 import requests
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_core.runnables import RunnablePassthrough
@@ -10,21 +11,43 @@ from langchain_huggingface.llms import HuggingFaceEndpoint
 from langchain_core.output_parsers import StrOutputParser
 HUGGINGFACEHUB_API_TOKEN = config('HUGGINGFACEHUB_API_TOKEN')
 
+API_URL_TITLE = "https://api-inference.huggingface.co/models/czearing/article-title-generator"
+headers = {"Authorization": f"Bearer {settings.HUGGINGFACEHUB_API_TOKEN}"}
 
-class ExternalAPIs:
-    @staticmethod
-    def generate_summary(payload):
-        API_URL = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
-        headers = {"Authorization": f"Bearer {settings.HUGGINGFACEHUB_API_TOKEN}"}
-        response = requests.post(API_URL, headers=headers, json=payload)
-        return response.json()
+API_URL_SUMMARY = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
+headers = {"Authorization": f"Bearer {settings.HUGGINGFACEHUB_API_TOKEN}"}
 
-    @staticmethod
-    def generate_title(payload):
-        API_URL = "https://api-inference.huggingface.co/models/czearing/article-title-generator"
-        headers = {"Authorization": f"Bearer {settings.HUGGINGFACEHUB_API_TOKEN}"}
-        response = requests.post(API_URL, headers=headers, json=payload)
-        return response.json()
+
+async def generate_title(conversation_content):
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+                API_URL_TITLE,
+                headers=headers,
+                json={
+                    "inputs": conversation_content,
+                    "parameters": {"max_length": 50, "min_length": 10}
+                }) as response:
+            result = await response.json()
+            if isinstance(result, list) and len(result) > 0:
+                return result[0]['generated_text']
+            else:
+                return "Untitled Conversation"
+
+
+async def generate_summary(conversation_content):
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+                API_URL_SUMMARY,
+                headers=headers,
+                json={
+                    "inputs": conversation_content,
+                    "parameters": {"max_length": 50, "min_length": 10}
+                }) as response:
+            result = await response.json()
+            if isinstance(result, list) and len(result) > 0:
+                return result[0]['generated_summary']
+            else:
+                return "Untitled Conversation"
 
 
 class LLMConfig:
@@ -49,13 +72,13 @@ class LLMConfig:
 
     @staticmethod
     def get_llm(model_name="Mixtral-8x7B", temperature=0.04, tokens=1024, top_k=20, top_p=0.85,
-                typical_p=0.95, repetition_penalty=1.03, is_streaming=True):
+                typical_p=0.95, repetition_penalty=1.3, is_streaming=True):
         return LLMConfig.configure_llm(
             model_name=model_name,
             max_new_tokens=tokens,
             top_k=top_k,
             top_p=top_p,
-            typical_p=typical_p,
+            # typical_p=typical_p,
             temperature=temperature,
             repetition_penalty=repetition_penalty,
             streaming=is_streaming,
@@ -159,14 +182,14 @@ class DocumentUtils:
 def main(context=None):
     prompt = CustomPromptTemplates.get_chat_prompt()
     llm = LLMConfig.get_llm()
-    if not context:
-        return ChainBuilder.create_chat_chain(
+    if context:
+        return ChainBuilder.create_doc_chain(
+            retrieved_docs=context,
             prompt=prompt,
             llm=llm,
             run_name='Assistant'
         )
-    return ChainBuilder.create_doc_chain(
-        retrieved_docs=context,
+    return ChainBuilder.create_chat_chain(
         prompt=prompt,
         llm=llm,
         run_name='Assistant'

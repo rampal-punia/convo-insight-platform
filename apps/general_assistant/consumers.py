@@ -5,7 +5,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 from channels.db import database_sync_to_async
 from django.core.files.base import ContentFile
 
-from models import GeneralConversation, GeneralMessage, AudioMessage
+from .models import GeneralConversation, GeneralMessage, AudioMessage
 from convochat.utils import configure_llm
 from .models import AudioMessage
 from .services import VoiceModalHandler
@@ -65,7 +65,8 @@ class GeneralChatConsumer(AsyncWebsocketConsumer):
 
             # Generate AI response
             llm_response_chunks = []
-            async for chunk in configure_llm.main().astream_events(input_with_history, version='v2', include_names=['Assistant']):
+            chain = configure_llm.main()
+            async for chunk in chain.astream_events(input_with_history, version='v2', include_names=['Assistant']):
                 if chunk['event'] in ['on_parser_start', 'on_parser_stream']:
                     await self.send(text_data=json.dumps(chunk))
 
@@ -78,7 +79,7 @@ class GeneralChatConsumer(AsyncWebsocketConsumer):
             # Generate and update title
             if self.conversation_dbi.title == 'Untitled Conversation' or self.conversation_dbi.title is None:
                 try:
-                    new_title = await configure_llm.ExternalAPIs.generate_title(ai_response)
+                    new_title = await configure_llm.generate_title(ai_response)
                     await self.save_conversation_title(new_title)
                     await self.send(text_data=json.dumps({
                         'type': 'title_update',
