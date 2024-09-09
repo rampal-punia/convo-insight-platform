@@ -1,84 +1,56 @@
 from django.conf import settings
 import aiohttp
-import requests
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_core.runnables import RunnablePassthrough
 from langchain_community.chat_message_histories import RedisChatMessageHistory
-from decouple import config
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_huggingface.llms import HuggingFaceEndpoint
+from langchain_huggingface import HuggingFaceEndpoint
 # from langchain_core.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 from langchain_core.output_parsers import StrOutputParser
-HUGGINGFACEHUB_API_TOKEN = config('HUGGINGFACEHUB_API_TOKEN')
-
-API_URL_TITLE = "https://api-inference.huggingface.co/models/czearing/article-title-generator"
-headers = {"Authorization": f"Bearer {settings.HUGGINGFACEHUB_API_TOKEN}"}
-
-API_URL_SUMMARY = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
-headers = {"Authorization": f"Bearer {settings.HUGGINGFACEHUB_API_TOKEN}"}
-
-
-async def generate_title(conversation_content):
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-                API_URL_TITLE,
-                headers=headers,
-                json={
-                    "inputs": conversation_content,
-                    "parameters": {"max_length": 50, "min_length": 10}
-                }) as response:
-            result = await response.json()
-            if isinstance(result, list) and len(result) > 0:
-                return result[0]['generated_text']
-            else:
-                return "Untitled Conversation"
-
-
-async def generate_summary(conversation_content):
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-                API_URL_SUMMARY,
-                headers=headers,
-                json={
-                    "inputs": conversation_content,
-                    "parameters": {"max_length": 50, "min_length": 10}
-                }) as response:
-            result = await response.json()
-            if isinstance(result, list) and len(result) > 0:
-                return result[0]['generated_summary']
-            else:
-                return "Untitled Conversation"
 
 
 class LLMConfig:
     HUGGINGFACE_MODELS = {
         "Mistral-7B": "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3",
-        "Mixtral-8x7B": "https://api-inference.huggingface.co/models/mistralai/Mixtral-8x7B-Instruct-v0.1",
+        "Mistral-Code-7B": "https://api-inference.huggingface.co/models/mistralai/Mamba-Codestral-7B-v0.1",
+        "Mistral-Nvidia-7B": "https://api-inference.huggingface.co/models/nvidia/Mistral-NeMo-Minitron-8B-Base",
+        "Mixtral-8x7B-I": "https://api-inference.huggingface.co/models/mistralai/Mixtral-8x7B-Instruct-v0.1",
+        "Mixtral-8x7B": "https://api-inference.huggingface.co/models/mistralai/Mixtral-8x7B-v0.1",
         "Mixtral-8x22B": "https://api-inference.huggingface.co/models/mistralai/Mixtral-8x22B-Instruct-v0.1",
         "Mistral-Nemo": "https://api-inference.huggingface.co/models/mistralai/Mistral-Nemo-Instruct-2407",
+    }
+    HUGGINGFACE_MODELS_REPO = {
+        "Mistral-7B": "mistralai/Mistral-7B-Instruct-v0.3",
+        "Mistral-Code-7B": "mistralai/Mamba-Codestral-7B-v0.1",
+        "Mistral-Nvidia-7B": "nvidia/Mistral-NeMo-Minitron-8B-Base",
+        "Mixtral-8x7B-I": "mistralai/Mixtral-8x7B-Instruct-v0.1",
+        "Mixtral-8x7B": "mistralai/Mixtral-8x7B-v0.1",
+        "Mixtral-8x22B": "mistralai/Mixtral-8x22B-Instruct-v0.1",
+        "Mistral-Nemo": "mistralai/Mistral-Nemo-Instruct-2407",
     }
 
     @classmethod
     def configure_llm(cls, model_name, **kwargs):
-        if model_name not in cls.HUGGINGFACE_MODELS:
+        if model_name not in cls.HUGGINGFACE_MODELS_REPO:
             raise ValueError(f"Unsupported model: {model_name}")
 
         return HuggingFaceEndpoint(
-            endpoint_url=cls.HUGGINGFACE_MODELS[model_name],
+            # endpoint_url=cls.HUGGINGFACE_MODELS[model_name],
+            repo_id=cls.HUGGINGFACE_MODELS_REPO[model_name],
             task='text-generation',
             huggingfacehub_api_token=settings.HUGGINGFACEHUB_API_TOKEN,
             **kwargs
         )
 
     @staticmethod
-    def get_llm(model_name="Mixtral-8x7B", temperature=0.04, tokens=1024, top_k=20, top_p=0.85,
-                typical_p=0.95, repetition_penalty=1.3, is_streaming=True):
+    def get_llm(model_name="Mixtral-8x7B-I", temperature=0.03, tokens=512, top_k=25, top_p=0.85,
+                typical_p=0.95, repetition_penalty=1.03, is_streaming=True):
         return LLMConfig.configure_llm(
             model_name=model_name,
             max_new_tokens=tokens,
             top_k=top_k,
             top_p=top_p,
-            # typical_p=typical_p,
+            typical_p=typical_p,
             temperature=temperature,
             repetition_penalty=repetition_penalty,
             streaming=is_streaming,
@@ -194,3 +166,46 @@ def main(context=None):
         llm=llm,
         run_name='Assistant'
     )
+
+
+chain = ChainBuilder.create_chat_chain(
+    prompt=CustomPromptTemplates.get_chat_prompt(),
+    llm=LLMConfig.get_llm(),
+    run_name='Assistant'
+)
+
+
+async def generate_title(conversation_content):
+    API_URL_TITLE = "https://api-inference.huggingface.co/models/czearing/article-title-generator"
+    headers = {"Authorization": f"Bearer {settings.HUGGINGFACEHUB_API_TOKEN}"}
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+                API_URL_TITLE,
+                headers=headers,
+                json={
+                    "inputs": conversation_content,
+                    "parameters": {"max_length": 50, "min_length": 10}
+                }) as response:
+            result = await response.json()
+            if isinstance(result, list) and len(result) > 0:
+                return result[0]['generated_text']
+            else:
+                return "Untitled Conversation"
+
+
+async def generate_summary(conversation_content):
+    API_URL_SUMMARY = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
+    headers = {"Authorization": f"Bearer {settings.HUGGINGFACEHUB_API_TOKEN}"}
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+                API_URL_SUMMARY,
+                headers=headers,
+                json={
+                    "inputs": conversation_content,
+                    "parameters": {"max_length": 50, "min_length": 10}
+                }) as response:
+            result = await response.json()
+            if isinstance(result, list) and len(result) > 0:
+                return result[0]['generated_summary']
+            else:
+                return "Untitled Conversation"

@@ -35,6 +35,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
         '''Run on receiving text data from front-end.'''
         input_data, conversation, user_message = await self.create_conversation_db(text_data)
 
+        # Process the message in real-time
+        # analyze_topics.delay(conversation.id)
+        # recognize_intent.delay(user_message.id)
+        # analyze_sentiment.delay(user_message.id)
+
         await TextChatHandler.process_text_response(
             conversation,
             user_message,

@@ -1,3 +1,11 @@
+from datetime import timedelta
+from .tasks import analyze_topics, recognize_intent, analyze_sentiment
+from .models import Message, Conversation
+from celery.schedules import crontab
+from .utils.sentiment_analyzer import SentimentAnalyzer
+from .utils.intent_recognizer import IntentRecognizer
+from .utils.topic_modeler import TopicModeler
+from .models import Intent, Sentiment, Topic
 from celery import shared_task
 from .models import Conversation, UserText, AIText
 from analysis.models import (
@@ -268,3 +276,87 @@ def save_conversation_title(conversation_id, title):
     conversation = Conversation.objects.get(id=conversation_id)
     conversation.title = title
     conversation.save()
+
+
+@shared_task
+def analyze_topics(conversation_id):
+    conversation = Conversation.objects.get(id=conversation_id)
+    modeler = TopicModeler()
+
+    # Get all messages in the conversation
+    messages = conversation.messages.all().order_by('created')
+    documents = [message.content for message in messages]
+
+    # Perform topic modeling
+    results = modeler.fit_transform(documents)
+
+    # Save topic distributions
+    for result in results['results']:
+        TopicDistribution.objects.create(
+            conversation=conversation,
+            topic=result['topic'],
+            weight=result['probability']
+        )
+
+    return results
+
+
+@shared_task
+def recognize_intent(message_id):
+    message = UserText.objects.get(id=message_id)
+    recognizer = IntentRecognizer()
+
+    result = recognizer.recognize_intent([message.content])[0]
+
+    IntentPrediction.objects.create(
+        message=message,
+        intent=result['predicted_intent'],
+        confidence=result['confidence']
+    )
+
+    return result['predicted_intent']
+
+
+@shared_task
+def analyze_sentiment(message_id):
+    message = UserText.objects.get(id=message_id)
+    analyzer = SentimentAnalyzer()
+
+    result = analyzer.analyze_sentiment([message.content])[0]
+
+    Sentiment.objects.create(
+        message=message,
+        score=result['overall'],
+        category=result['category']
+    )
+
+    return result['overall']
+
+
+@shared_task
+def process_recent_messages():
+    # Get conversations with messages in the last hour
+    one_hour_ago = timezone.now() - timedelta(hours=1)
+    recent_conversations = Conversation.objects.filter(
+        messages__created__gte=one_hour_ago
+    ).distinct()
+
+    for conversation in recent_conversations:
+        # Process topics for the entire conversation
+        analyze_topics.delay(conversation.id)
+
+        # Process intent and sentiment for individual messages
+        recent_messages = conversation.messages.filter(
+            created__gte=one_hour_ago)
+        for message in recent_messages:
+            recognize_intent.delay(message.id)
+            analyze_sentiment.delay(message.id)
+
+
+# Schedule the batch processing task
+# app.conf.beat_schedule = {
+#     'process-recent-messages': {
+#         'task': 'your_app.tasks.process_recent_messages',
+#         'schedule': crontab(minute='*/30'),  # Run every 30 minutes
+#     },
+# }

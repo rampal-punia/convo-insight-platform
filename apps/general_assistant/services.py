@@ -38,6 +38,7 @@ class VoiceModalHandler:
             tts.save(temp_file.name)
             return temp_file.name
 
+        print("text: ", text)
         audio_file = await asyncio.to_thread(generate_audio)
         with open(audio_file, 'rb') as f:
             audio_content = f.read()
@@ -70,3 +71,16 @@ class VoiceModalHandler:
             sf.write(output_file, y, target_sr)
 
         await asyncio.to_thread(convert)
+
+
+if __name__ == '__main__':
+    wav_file = '/home/ram/convo-insight-platform/media/voice_messages/audio_11.wav'
+    vh = VoiceModalHandler()
+
+    # Run the async function using asyncio.run()
+    # text = asyncio.run(vh.speech_to_text(wav_file))
+    # print(text)
+
+    text = "Life is awesome and programming in python is great."
+    speech = asyncio.run(vh.text_to_speech(text))
+    print(speech)

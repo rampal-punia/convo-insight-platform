@@ -54,7 +54,7 @@ class GeneralChatConsumer(AsyncWebsocketConsumer):
     ):
         try:
             history = await self.get_conversation_history()
-            print(history)
+            print("history: ", history)
             history_str = '\n'.join(
                 [f"{'Human' if isinstance(msg, HumanMessage) else 'AI'}:{msg.content}" for msg in history]
             )
@@ -62,11 +62,12 @@ class GeneralChatConsumer(AsyncWebsocketConsumer):
                 'history': history_str,
                 'input': input_data
             }
+            print("input_with_history: ", input_with_history)
 
             # Generate AI response
             llm_response_chunks = []
-            chain = configure_llm.main()
-            async for chunk in chain.astream_events(input_with_history, version='v2', include_names=['Assistant']):
+            # chain = configure_llm.main()
+            async for chunk in configure_llm.chain.astream_events(input_with_history, version='v2'):
                 if chunk['event'] in ['on_parser_start', 'on_parser_stream']:
                     await self.send(text_data=json.dumps(chunk))
 
@@ -167,6 +168,7 @@ class GeneralChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def save_audio_message(self, message, audio_content, transcript=''):
+        print('transcript: ', transcript)
         audio_file = ContentFile(audio_content, name=f"audio_{message.id}.wav")
         return AudioMessage.objects.create(
             message=message,
