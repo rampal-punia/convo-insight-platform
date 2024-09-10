@@ -11,7 +11,7 @@ urlpatterns = [
     path('chat/<uuid:pk>/', views.GeneralConversationDetailView.as_view(),
          name='generalchat_detail_url'),
     path("<uuid:pk>/delete/", views.GeneralConversationDeleteView.as_view(),
-         name='delete_url'),
+         name='generalchat_delete_url'),
     path("new/", views.GeneralConversationView.as_view(),
          name='new_general_chat_url'),
 ]

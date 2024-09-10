@@ -38,7 +38,6 @@ class VoiceModalHandler:
             tts.save(temp_file.name)
             return temp_file.name
 
-        print("text: ", text)
         audio_file = await asyncio.to_thread(generate_audio)
         with open(audio_file, 'rb') as f:
             audio_content = f.read()

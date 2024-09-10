@@ -60,4 +60,4 @@ class GeneralConversationDetailView(LoginRequiredMixin, generic.DetailView):
 class GeneralConversationDeleteView(LoginRequiredMixin, generic.DeleteView):
     model = GeneralConversation
     template_name = 'general_assistant/conversation_confirm_delete.html'
-    success_url = reverse_lazy('general_assistant:audio_list_url')
+    success_url = reverse_lazy('general_assistant:generalchat_list_url')

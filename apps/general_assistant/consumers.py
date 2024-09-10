@@ -98,6 +98,7 @@ class GeneralChatConsumer(AsyncWebsocketConsumer):
                 is_from_user=False,
                 in_reply_to=user_message_dbi
             )
+            return ai_response
         except Exception as ex:
             print(f"Unable to process response: {ex}")
 
