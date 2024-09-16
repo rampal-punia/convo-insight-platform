@@ -11,9 +11,9 @@ User = get_user_model()
 
 class Order(CreationModificationDateBase):
     class Status(models.TextChoices):
-        PENDING = 'PE', _('Pending')
         PROCESSESING = 'PR', _('Processing')
         SHIPPED = 'SH', _('Shipped')
+        PENDING = 'PE', _('Pending')  # Make it 'transit'
         DELIVERED = 'DE', _('Delivered')
         CANCELLED = 'CA', _('Cancelled')
 
@@ -21,7 +21,7 @@ class Order(CreationModificationDateBase):
     status = models.CharField(
         max_length=2,
         choices=Status.choices,
-        default=Status.PENDING)
+        default=Status.PENDING)  # default 'processing'
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
 
     def __str__(self):

@@ -20,6 +20,8 @@ urlpatterns = [
     path('convochat/', include('convochat.urls'), name='convochat'),
     path('general_assistant/', include('general_assistant.urls'),
          name='general_assistant'),
+    path('orders/', include('orders.urls'),
+         name='orders'),
 ]
 
 if settings.DEBUG:

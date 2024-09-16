@@ -40,12 +40,13 @@ class Command(BaseCommand):
             user = random.choice(users)
             order = Order.objects.create(
                 user=user,
+                # status=random.choice(['TR', 'PR', 'SH', 'DE', 'CA']),
                 status=random.choice(['PE', 'PR', 'SH', 'DE', 'CA']),
                 total_amount=0
             )
 
             # Add order items
-            for _ in range(random.randint(1, 5)):
+            for _ in range(random.randint(1, 3)):
                 product = Product.objects.order_by('?').first()
                 quantity = random.randint(1, 3)
                 OrderItem.objects.create(
