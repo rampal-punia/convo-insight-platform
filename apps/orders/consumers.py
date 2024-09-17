@@ -25,7 +25,7 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
         await self.accept()
         await self.send(text_data=json.dumps({
             'type': 'welcome',
-            'message': f"Welcome, {self.user}! you are now connected to the convo-chat."
+            'message': f"Welcome, {self.user}! you are now connected to the Order Support"
         }))
 
     async def disconnect(self, close_code):
