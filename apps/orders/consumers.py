@@ -52,6 +52,7 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
         input_type = data.get('type')   # front-end message
         input_data = data.get('message')
         uuid = data.get('uuid')
+        order_id = data.get('order_id')
 
         conversation = await self.get_or_create_conversation(uuid)
         user_message = await self.save_message(conversation, input_type, is_from_user=True)
