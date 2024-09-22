@@ -185,3 +185,4 @@ script.*
 file_name_converter.ipynb
 *.csv
 *.joblib
+_*.ipynb
