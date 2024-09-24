@@ -187,3 +187,4 @@ file_name_converter.ipynb
 *.joblib
 _*.ipynb
 *.dill
+**/trained_bertopic_model
