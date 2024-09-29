@@ -189,3 +189,5 @@ _*.ipynb
 *.dill
 **/trained_bertopic_model
 **/sagemaker_integration.py
+**/lda_visualization.html
+**/topic_visualization.html
