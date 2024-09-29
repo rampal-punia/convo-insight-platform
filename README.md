@@ -8,14 +8,16 @@ ConvoInsight is a state-of-the-art Customer Conversational Intelligence Platform
 2. [Key Features](#key-features)
 3. [Technology Stack](#technology-stack)
 4. [Project Structure](#project-structure)
-5. [Installation](#installation)
-6. [Usage](#usage)
-7. [API Documentation](#api-documentation)
-8. [Contributing](#contributing)
-9. [Datasets](#datasets)
-10. [License](#license)
-11. [Acknowledgements](#acknowledgements)
-12. [Disclaimer](#disclaimer)
+5. [Key Components](#key-components)
+6. [Installation](#installation)
+7. [Usage](#usage)
+8. [Current State and TODO](#current-state-and-todo)
+9. [API Documentation](#api-documentation)
+10. [Contributing](#contributing)
+11. [Datasets](#datasets)
+12. [License](#license)
+13. [Acknowledgements](#acknowledgements)
+14. [Disclaimer](#disclaimer)
 
 ## Project Overview
 
@@ -42,6 +44,8 @@ ConvoInsight leverages cutting-edge NLP techniques and Large Language Models to 
 - Scalable architecture for handling large volumes of conversations
 - Fine-tuning capabilities for LLM models
 - Integration with SageMaker for model training, deployment, and monitoring
+- General AI assistant functionality with text and voice input
+- Order management system with integrated support chat
 
 ## Technology Stack
 
@@ -57,7 +61,7 @@ ConvoInsight leverages cutting-edge NLP techniques and Large Language Models to 
   - Custom fine-tuned LLM models
   - SageMaker for ML workflow automation
   - Hugging Face models for various NLP tasks
-- **NLP Libraries**: transformers, BERTopic
+- **NLP Libraries**: NLTK, Gensim, transformers, BERTopic
 - **Cloud Integration**: AWS S3 for data storage
 
 ## Project Structure
@@ -71,7 +75,10 @@ convo-insight-platform/
 │   ├── api/               # API endpoints
 │   ├── convochat/         # Core conversation handling
 │   ├── dashboard/         # User dashboard and visualization
-│   └── llms/              # LLM development, integration and management
+│   ├── general_assistant/ # General AI assistant functionality
+│   ├── llms/              # LLM development, integration and management
+│   ├── orders/            # Order management
+│   └── products/          # Product management
 ├── data_processing/       # Scripts for data ingestion and preprocessing
 ├── static/                # Static files (CSS, JS, images)
 ├── templates/             # HTML templates
@@ -83,6 +90,15 @@ convo-insight-platform/
 ├── CONTRIBUTING.md
 └── README.md
 ```
+
+## Key Components
+
+- **LLM Configuration and Integration**: Utilizes LangChain for LLM integration with support for multiple Hugging Face models (Mistral, Mixtral)
+- **Real-time Communication**: Uses Django Channels for WebSocket support in chat functionality
+- **Background Tasks**: Celery tasks for processing conversations, generating metrics, and managing ML workflows
+- **Performance Evaluation**: AgentPerformanceEvaluator for assessing conversation quality
+- **NLP Tasks**: Sentiment analysis, intent recognition, and topic modeling using various ML and deep learning models
+- **Data Storage and Retrieval**: PostgreSQL with pgvector for efficient vector storage and similarity search
 
 ## Installation
 
@@ -129,20 +145,50 @@ convo-insight-platform/
 
 4. To start a new conversation, navigate to `http://localhost:8000/convochat/new/`.
 
-5. To fine-tune the LLM model:
+5. To create dummy data for testing:
+   ```
+   python manage.py create_random_users 50
+   python manage.py generate_dummy_data
+   ```
+
+6. To fine-tune the LLM model:
    ```
    python manage.py fine_tune_llm
    ```
 
-6. To train and deploy a model using SageMaker:
+7. To train and deploy a model using SageMaker:
    ```
    python manage.py train_deploy_model [model_type] [script_path] [train_data_path] [output_path] [endpoint_name]
    ```
 
-7. To monitor model performance:
+8. To monitor model performance:
    ```
    python manage.py monitor_model [endpoint_name]
    ```
+
+## Current State and TODO
+
+### Current State:
+- Basic dashboard with general assistance and customer support interactions
+- User authentication and profile management
+- General AI assistant with text and voice input
+- Initial implementation of NLP tasks (sentiment analysis, intent recognition, topic modeling)
+- SageMaker integration setup (pending authentication)
+- Order and product management systems
+
+### TODO:
+1. Implement the main Customer Support chat pipeline with real-time NLP analysis
+2. Develop and integrate more advanced NLP models using transformers
+3. Enhance the dashboard with detailed analysis and visualizations
+4. Develop comprehensive API endpoints
+5. Implement more robust error handling and logging
+6. Enhance test coverage
+7. Optimize database queries and indexing
+8. Implement more sophisticated recommendation systems
+9. Enhance voice processing capabilities
+10. Develop a comprehensive admin interface for system management
+
+For a complete list of TODO items, please refer to the project documentation.
 
 ## API Documentation
 
@@ -155,13 +201,7 @@ Detailed API documentation can be found at `/api/docs/` when running the server.
 
 ## Contributing
 
-We welcome contributions to ConvoInsight! Please refer to our [CONTRIBUTING.md](CONTRIBUTING.md) file for detailed guidelines on how to contribute to the project. Key points include:
-
-- Fork the repository and create your branch from `development`
-- Ensure any install or build dependencies are removed before the end of the layer when doing a build
-- Update the README.md with details of changes to the interface
-- Increase the version numbers in any examples files and the README.md to the new version that this Pull Request would represent
-- You may merge the Pull Request once you have the sign-off of two other developers, or if you do not have permission to do that, you may request the second reviewer to merge it for you
+We welcome contributions to ConvoInsight! Please refer to our [CONTRIBUTING.md](CONTRIBUTING.md) file for detailed guidelines on how to contribute to the project.
 
 ## Datasets
 

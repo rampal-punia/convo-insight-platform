@@ -191,3 +191,5 @@ _*.ipynb
 **/sagemaker_integration.py
 **/lda_visualization.html
 **/topic_visualization.html
+**/saved_ml_models/
+**/saved_tr_models/
