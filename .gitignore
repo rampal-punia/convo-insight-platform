@@ -188,3 +188,4 @@ file_name_converter.ipynb
 _*.ipynb
 *.dill
 **/trained_bertopic_model
+**/sagemaker_integration.py
