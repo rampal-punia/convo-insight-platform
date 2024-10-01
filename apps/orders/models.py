@@ -11,17 +11,20 @@ User = get_user_model()
 
 class Order(CreationModificationDateBase):
     class Status(models.TextChoices):
+        PENDING = 'PE', _('Pending')
         PROCESSESING = 'PR', _('Processing')
         SHIPPED = 'SH', _('Shipped')
-        PENDING = 'PE', _('Pending')  # Make it 'transit'
+        IN_TRANSIT = 'TR', _('In Transit')
         DELIVERED = 'DE', _('Delivered')
+        RETURNED = 'RT', _('Returned')
+        REFUNDED = 'RF', _('Refunded')
         CANCELLED = 'CA', _('Cancelled')
 
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     status = models.CharField(
         max_length=2,
         choices=Status.choices,
-        default=Status.PENDING)  # default 'processing'
+        default=Status.PENDING)
     total_amount = models.DecimalField(
         max_digits=10,
         decimal_places=2,
