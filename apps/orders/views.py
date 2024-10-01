@@ -1,9 +1,13 @@
+from django.db.models.base import Model as Model
+from django.db.models.query import QuerySet
 from django.views.generic import ListView, DetailView, CreateView, UpdateView, DeleteView
 from django.urls import reverse_lazy
+from typing import Any
 from django.db import transaction
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.contrib.auth.mixins import LoginRequiredMixin
+from convochat.models import Conversation, Message
 from .models import Order, OrderItem
 from .forms import OrderForm, OrderItemFormSet
 
@@ -21,6 +25,18 @@ class OrderDetailView(LoginRequiredMixin, DetailView):
     model = Order
     template_name = 'orders/order_detail.html'
     context_object_name = 'order'
+
+    def get_context_data(self, **kwargs) -> dict[str, Any]:
+        context = super().get_context_data(**kwargs)
+        order = self.get_object()
+        conversation = Conversation.objects.filter(
+            order_links__order=order).order_by('-created')
+        message_qs = Message.objects.filter(
+            conversation=conversation
+        ).order_by('-created')
+        context["previous_messages"] = message_qs
+        context["conversation_id"] = conversation.id
+        return context
 
 
 class OrderCreateView(LoginRequiredMixin, CreateView):

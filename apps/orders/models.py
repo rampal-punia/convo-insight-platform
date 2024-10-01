@@ -53,3 +53,21 @@ class OrderItem(models.Model):
 
     def __str__(self):
         return f"{self.quantity} x {self.product.name} in Order {self.order.id}"
+
+
+class OrderConversationLink(models.Model):
+    order = models.ForeignKey(
+        'Order', on_delete=models.CASCADE, related_name='conversation_links')
+    conversation = models.ForeignKey(
+        'convochat.Conversation',
+        on_delete=models.CASCADE,
+        related_name='order_links',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('order', 'conversation')
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Order {self.order.id} - Conversation {self.conversation.id}"

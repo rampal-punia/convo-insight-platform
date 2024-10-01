@@ -5,6 +5,7 @@ from channels.db import database_sync_to_async
 
 from convochat.utils.text_chat_handler import TextChatHandler
 from convochat.models import Conversation, Message, UserText, AIText
+from .models import Order, OrderConversationLink, OrderItem
 # from .tasks import process_ai_response, process_user_message, analyze_conversation_sentiment
 
 
@@ -51,26 +52,33 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
         data = json.loads(text_data)
         input_type = data.get('type')   # front-end message
         input_data = data.get('message')
-        uuid = data.get('uuid')
+        conversation_id = data.get('uuid')
+        print('*'*40)
+        print("conversation_id is : ", conversation_id)
         order_id = data.get('order_id')
 
-        conversation = await self.get_or_create_conversation(uuid)
+        conversation = await self.get_or_create_conversation(conversation_id, order_id)
         user_message = await self.save_message(conversation, input_type, is_from_user=True)
         await self.save_usertext(user_message, input_data)
         return input_data, conversation, user_message
 
     @database_sync_to_async
-    def get_or_create_conversation(self, uuid):
+    def get_or_create_conversation(self, conversation_id, order_id):
         conversation, created = Conversation.objects.update_or_create(
-            id=uuid,
+            id=conversation_id,
             defaults={
                 'user': self.user,
                 'status': 'AC'
             }
         )
+        order = Order.objects.get(order_id)
+        OrderConversationLink.objects.get_or_create(
+            order=order,
+            conversation=conversation
+        )
         if created:
             Conversation.objects.filter(user=self.user, status='AC').exclude(
-                id=uuid
+                id=conversation_id
             ).update(status='EN')
         return conversation
 
