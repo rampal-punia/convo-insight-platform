@@ -145,16 +145,6 @@ class AIText(models.Model):
 
 
 class Intent(models.Model):
-    '''
-        Examples of Intents:
-        - Ask Question
-        - Request Information
-        - File Complaint
-        - Seek Assistance
-        - Make Purchase
-        - Cancel Service
-        - Provide Feedback
-    '''
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True)
 
@@ -163,18 +153,6 @@ class Intent(models.Model):
 
 
 class Topic(models.Model):
-    '''
-        Examples of Topics:
-
-        - Product Inquiries
-        - Billing Issues
-        - Technical Support
-        - Feature Requests
-        - General Feedback
-        - Shipping and Delivery
-        - Account Management
-    '''
-
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True)
 

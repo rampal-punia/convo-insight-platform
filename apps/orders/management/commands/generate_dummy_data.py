@@ -1,4 +1,4 @@
-# run 'python manage.py generate_dummy_data'
+# run python manage.py generate_dummy_data
 
 import random
 from django.core.management.base import BaseCommand
@@ -23,7 +23,7 @@ class Command(BaseCommand):
         for _ in range(50):
             Product.objects.create(
                 name=f"Product {_}",
-                description=f"Description in detail for the Product {_}",
+                description=f"Description in detail about the Product {_}",
                 price=random.uniform(10, 500),
                 category=Category.objects.order_by('?').first(),
                 stock=random.randint(0, 100)
@@ -40,8 +40,8 @@ class Command(BaseCommand):
             user = random.choice(users)
             order = Order.objects.create(
                 user=user,
-                # status=random.choice(['TR', 'PR', 'SH', 'DE', 'CA']),
-                status=random.choice(['PE', 'PR', 'SH', 'DE', 'CA']),
+                status=random.choice(
+                    ['PE', 'PR', 'SH', 'TR', 'DE', 'RT', 'RF', 'CA']),
                 total_amount=0
             )
 

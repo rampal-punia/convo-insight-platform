@@ -1,5 +1,13 @@
 from django.contrib import admin
-from .models import Conversation, Message, UserText, AIText
+from .models import (
+    Conversation,
+    Message,
+    UserText,
+    AIText,
+    Intent,
+    Topic,
+    Sentiment
+)
 
 
 @admin.register(Conversation)
@@ -41,3 +49,18 @@ class AITextAdmin(admin.ModelAdmin):
     """
     list_display = ('id', 'message')
     list_filter = ('id', 'message')
+
+
+@admin.register(Intent)
+class IntentAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name', 'description')
+
+
+@admin.register(Topic)
+class TopicAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name', 'description')
+
+
+@admin.register(Sentiment)
+class SentimentAdmin(admin.ModelAdmin):
+    list_display = ('id', 'category', 'message')
