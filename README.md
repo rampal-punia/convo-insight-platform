@@ -53,7 +53,7 @@ ConvoInsight leverages cutting-edge NLP techniques and Large Language Models to 
 - **Asynchronous Support**: Django Channels
 - **Database**: PostgreSQL with pgvector extension
 - **Task Queue**: Celery with Redis as message broker
-- **LLM Integration**: LangChain
+- **LLM Integration And LLM-Agent Creation**: LangChain and LangGraph
 - **Web Servers**: ASGI (Daphne) for WebSocket, WSGI (Gunicorn) for HTTP
 - **Frontend**: Django templates with JavaScript and jQuery (future plans for React.js)
 - **Containerization**: Docker (for deployment)
