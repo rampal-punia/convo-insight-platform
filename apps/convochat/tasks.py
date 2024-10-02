@@ -1,13 +1,10 @@
 from datetime import timedelta
-from .tasks import analyze_topics, recognize_intent, analyze_sentiment
-from .models import Message, Conversation
 from celery.schedules import crontab
 from .utils.sentiment_analyzer import SentimentAnalyzer
-from .utils.intent_recognizer import IntentRecognizer
+from .utils.intent_recognizer_bertbase import IntentRecognizer
 from .utils.topic_modeler import TopicModeler
-from .models import Intent, Sentiment, Topic
 from celery import shared_task
-from .models import Conversation, UserText, AIText
+from .models import Conversation, UserText, AIText, Message, Intent, Sentiment, Topic
 from analysis.models import (
     LLMAgentPerformance,
     ConversationMetrics,
@@ -15,13 +12,9 @@ from analysis.models import (
     TopicDistribution,
     IntentPrediction
 )
-from apps.analysis.utils.agent_performance_evaluator import AgentPerformanceEvaluator
+from analysis.utils.agent_performance_evaluator import AgentPerformanceEvaluator
 from .models import Intent, Topic
-from utils.nlp_helper import perform_sentiment_analysis, detect_intent, extract_topics
-from utils.sentiment_analyzer import SentimentAnalyzer
-from utils.intent_recognizer import IntentRecognizer
 from django.db import transaction
-from utils.topic_modeler import TopicModeler
 from django.utils import timezone
 
 
@@ -68,9 +61,6 @@ def analyze_conversation_sentiment(conversation_id):
     texts = [message.content for message in user_messages]
 
     # Analyze sentiment
-    sentiments = analyzer.analyze_sentiment(texts)
-
-    # Calculate average sentiments
     sentiments = analyzer.analyze_sentiment(texts)
 
     # Calculate average sentiment

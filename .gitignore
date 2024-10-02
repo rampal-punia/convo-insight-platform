@@ -193,3 +193,6 @@ _*.ipynb
 **/topic_visualization.html
 **/saved_ml_models/
 **/saved_tr_models/
+**/logs/
+**/results/
+**/wandb/

@@ -15,6 +15,11 @@ class Conversation(CreationModificationDateBase):
         ARCHIVED = 'AR', _('Archived')
         ENDED = 'EN', _('Ended')
 
+    class ResolutionStatus(models.TextChoices):
+        RESOLVED = 'RE', _('Resolved')
+        IN_PROGRESS = 'PR', _('In Progress')
+        UNRESOLVED = 'UN', _('Unresolved')
+
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
@@ -34,7 +39,7 @@ class Conversation(CreationModificationDateBase):
         choices=Status.choices,
         default=Status.ACTIVE
     )
-    overall_sentiment = models.FloatField(null=True, blank=True)
+    overall_sentiment_score = models.FloatField(null=True, blank=True)
     dominant_topic = models.ForeignKey(
         'Topic',
         on_delete=models.SET_NULL,
@@ -43,6 +48,13 @@ class Conversation(CreationModificationDateBase):
         related_name='conversations',
     )
     summary = models.TextField(null=True, blank=True)
+    resolution_status = models.CharField(
+        max_length=2,
+        choices=ResolutionStatus.choices,
+        default=ResolutionStatus.UNRESOLVED,
+        null=True,
+        blank=True
+    )
 
     class Meta:
         ordering = ['-created']
@@ -53,6 +65,9 @@ class Conversation(CreationModificationDateBase):
 
     def __str__(self) -> str:
         return f"{self.user.username} - {self.title[:40]}"
+
+    def lasted_for(self):
+        return float(self.modified - self.created)
 
 
 class Message(CreationModificationDateBase):
@@ -166,21 +181,34 @@ class Sentiment(models.Model):
         NEGATIVE = 'NE', _('Negative')
         NEUTRAL = 'NU', _('Neutral')
 
+    class GranularSentiment(models.TextChoices):
+        FRUSTRATION = 'FR', _('Frustration')
+        SATISFACTION = 'SA', _('Satisfaction')
+        INQUIRY = 'IN', _('Inquiry')
+        ANGER = 'AN', _('Anger')
+        HAPPINESS = 'HA', _('Happiness')
+        CONFUSION = 'CO', _('Confusion')
+        URGENCY = 'UR', _('Urgency')
+        # Add more granular categories as needed
+
     category = models.CharField(
         max_length=2,
         choices=SentimentCategory.choices
     )
-    score = models.FloatField()
+    score = models.FloatField(
+        help_text="Sentiment score between -1 (very negative) and 1 (very positive)"
+    )
     message = models.OneToOneField(
         UserText,
         on_delete=models.CASCADE,
-        related_name='detailed_sentiment'
+        related_name='sentiment'
     )
     granular_category = models.CharField(
-        max_length=50,
+        max_length=2,
         blank=True,
-        null=True
+        null=True,
+        choices=GranularSentiment.choices,
     )
 
-    def __str__(self) -> str:
-        return f"{self.get_category_display()} ({self.score})"
+    def __str__(self):
+        return f"{self.get_category_display()} ({self.score}) - {self.get_granular_category_display() or 'N/A'}"

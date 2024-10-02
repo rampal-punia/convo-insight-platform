@@ -42,7 +42,7 @@ class Recommendation(models.Model):
     content = models.TextField()
     confidence_score = models.FloatField()
     created_at = models.DateTimeField(auto_now_add=True)
-    applied = models.BooleanField(default=False)
+    is_applied = models.BooleanField(default=False)
 
     def __str__(self):
         return f"Recommendation for conversation {self.conversation.id}"

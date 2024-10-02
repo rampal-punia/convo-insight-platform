@@ -1,5 +1,3 @@
-# apps/convochat/intent_recognition/intent_recognizer.py
-
 import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from typing import List, Dict
@@ -58,3 +56,46 @@ if __name__ == "__main__":
         for intent, score in result['all_intents'].items():
             print(f"  {intent}: {score:.2f}")
         print()
+
+    # Output
+    '''
+    Text: What are your business hours?
+    Predicted Intent: complaint
+    Confidence: 0.50
+    All Intents:
+    question: 0.17
+    complaint: 0.50
+    request: 0.33
+
+    Text: I'm very unhappy with the service I received.
+    Predicted Intent: complaint
+    Confidence: 0.98
+    All Intents:
+    question: 0.00
+    complaint: 0.98
+    request: 0.02
+
+    Text: Can you help me reset my password?
+    Predicted Intent: complaint
+    Confidence: 0.90
+    All Intents:
+    question: 0.03
+    complaint: 0.90
+    request: 0.06
+
+    Text: I think your product is great!
+    Predicted Intent: complaint
+    Confidence: 0.84
+    All Intents:
+    question: 0.02
+    complaint: 0.84
+    request: 0.15
+
+    Text: Hello, how are you doing today?
+    Predicted Intent: complaint
+    Confidence: 0.93
+    All Intents:
+    question: 0.02
+    complaint: 0.93
+    request: 0.05
+    '''

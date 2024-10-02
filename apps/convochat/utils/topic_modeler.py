@@ -1,5 +1,3 @@
-# apps/convochat/topic_modeling/topic_modeler.py
-
 from bertopic import BERTopic
 from typing import List, Dict
 import numpy as np

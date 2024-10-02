@@ -26,17 +26,17 @@ class OrderDetailView(LoginRequiredMixin, DetailView):
     template_name = 'orders/order_detail.html'
     context_object_name = 'order'
 
-    def get_context_data(self, **kwargs) -> dict[str, Any]:
-        context = super().get_context_data(**kwargs)
-        order = self.get_object()
-        conversation = Conversation.objects.filter(
-            order_links__order=order).order_by('-created')
-        message_qs = Message.objects.filter(
-            conversation=conversation
-        ).order_by('-created')
-        context["previous_messages"] = message_qs
-        context["conversation_id"] = conversation.id
-        return context
+    # def get_context_data(self, **kwargs) -> dict[str, Any]:
+    #     context = super().get_context_data(**kwargs)
+    #     order = self.get_object()
+    #     conversation = Conversation.objects.filter(
+    #         order_links__order=order).order_by('-created')
+    #     message_qs = Message.objects.filter(
+    #         conversation=conversation
+    #     ).order_by('-created')
+    #     context["previous_messages"] = message_qs
+    #     context["conversation_id"] = conversation.id
+    #     return context
 
 
 class OrderCreateView(LoginRequiredMixin, CreateView):
