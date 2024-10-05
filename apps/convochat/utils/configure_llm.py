@@ -84,6 +84,22 @@ class CustomPromptTemplates:
         ])
 
     @staticmethod
+    def get_orders_prompt():
+        return ChatPromptTemplate.from_messages([
+            ("system", "You are a helpful customer support assistant for an e-commerce company."),
+            ('human', """
+            Conversation history:
+            {history}
+            
+            Order information:
+            {order_dict}
+            
+            New User message: {input}
+            """),
+            ("human", "Now, respond to the new message, taking into account the order details if relevant. Use the full status descriptions when referring to order status.")
+        ])
+
+    @staticmethod
     def get_doc_prompt_with_history():
         return ChatPromptTemplate.from_messages([
             ("system", "You are an AI assistant helping to answer, in short (150 to 200 words only), the questions based on a given document. Use the following context to answer the user's question. If you cannot answer the question based on the context, say that you don't have enough information to answer accurately."),
@@ -101,6 +117,11 @@ class ChainBuilder:
         return prompt | llm.with_config({'run_name': 'model'}) | output_parser.with_config({'run_name': run_name})
 
     @staticmethod
+    def create_order_chat_chain(prompt, llm, run_name):
+        output_parser = StrOutputParser()
+        return prompt | llm.with_config({'run_name': 'model'}) | output_parser.with_config({'run_name': run_name})
+
+    @staticmethod
     def create_qa_chain(retriever, prompt, llm, output_parser):
         return (
             {
@@ -114,7 +135,7 @@ class ChainBuilder:
         )
 
     @staticmethod
-    def create_doc_chain(retrieved_docs, prompt, llm, output_parser, run_name):
+    def create_doc_chain(retrieved_docs, prompt, llm, run_name):
         output_parser = StrOutputParser()
         chain = (
             RunnablePassthrough.assign(context=retrieved_docs)
@@ -162,6 +183,16 @@ def main(context=None):
             run_name='Assistant'
         )
     return ChainBuilder.create_chat_chain(
+        prompt=prompt,
+        llm=llm,
+        run_name='Assistant'
+    )
+
+
+def order_main():
+    prompt = CustomPromptTemplates.get_orders_prompt()
+    llm = LLMConfig.get_llm()
+    return ChainBuilder.create_order_chat_chain(
         prompt=prompt,
         llm=llm,
         run_name='Assistant'

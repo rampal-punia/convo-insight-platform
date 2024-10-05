@@ -70,7 +70,7 @@ class IntentPrediction(models.Model):
         on_delete=models.CASCADE,
         related_name='intent_prediction'
     )
-    intent = models.ForeignKey('convochat.Intent', on_delete=models.CASCADE)
+    intent = models.CharField(max_length=50, null=True, blank=True)
     confidence_score = models.FloatField()
 
     def __str__(self):

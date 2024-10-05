@@ -1,6 +1,6 @@
 from typing import List, Dict
 from django.db.models import Avg
-from models import LLMAgentPerformance, Conversation
+from analysis.models import LLMAgentPerformance, ConversationMetrics
 
 
 class AgentPerformanceEvaluator:

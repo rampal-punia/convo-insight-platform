@@ -1,6 +1,6 @@
 import torch
 from transformers import DistilBertTokenizer, DistilBertForSequenceClassification, Trainer, TrainingArguments
-from typing import List, Dict
+from typing import List, Dict, Union
 from torch.utils.data import Dataset
 
 
@@ -50,6 +50,8 @@ class IntentRecognizer:
         trainer.train()
 
     def recognize_intent(self, texts: List[str]) -> List[Dict[str, float]]:
+        if isinstance(texts, str):
+            texts = [texts]
         results = []
         for text in texts:
             inputs = self.tokenizer(
@@ -92,20 +94,23 @@ if __name__ == "__main__":
     # recognizer.fine_tune(train_texts, train_labels)
 
     # Test the model
-    test_texts = [
-        "When do you close?",
-        "This product is terrible!",
-        "How do I change my account settings?",
-        "Your service is excellent!",
-        "Hi there!",
-        "I have an idea for improving your app."
-    ]
+    test_texts = "This product is terrible!"
     results = recognizer.recognize_intent(test_texts)
-    for result in results:
-        print(f"Text: {result['text']}")
-        print(f"Predicted Intent: {result['predicted_intent']}")
-        print(f"Confidence: {result['confidence']:.2f}")
-        print("All Intents:")
-        for intent, score in result['all_intents'].items():
-            print(f"  {intent}: {score:.2f}")
-        print()
+    print(results)
+    # test_texts = [
+    #     "When do you close?",
+    #     "This product is terrible!",
+    #     "How do I change my account settings?",
+    #     "Your service is excellent!",
+    #     "Hi there!",
+    #     "I have an idea for improving your app."
+    # ]
+    # results = recognizer.recognize_intent(test_texts)
+    # for result in results:
+    #     print(f"Text: {result['text']}")
+    #     print(f"Predicted Intent: {result['predicted_intent']}")
+    #     print(f"Confidence: {result['confidence']:.2f}")
+    #     print("All Intents:")
+    #     for intent, score in result['all_intents'].items():
+    #         print(f"  {intent}: {score:.2f}")
+    #     print()
