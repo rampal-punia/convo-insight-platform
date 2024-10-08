@@ -96,7 +96,7 @@ class CustomPromptTemplates:
             
             New User message: {input}
             """),
-            ("human", "Now, respond to the new message, taking into account the order details if relevant. Use the full status descriptions when referring to order status.")
+            ("human", "If the query is about a specific order, reference the order details in your response. Use the full status descriptions when referring to order status. If it's a general query, provide appropriate assistance. Please provide a helpful, empathetic, and informative response. If you're unsure about any details, politely ask for clarification. Always maintain a professional and courteous tone.")
         ])
 
     @staticmethod

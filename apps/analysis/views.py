@@ -1,5 +1,8 @@
 # apps/analysis/views.py
 
+from orders.models import Order
+from django.db.models import Count, Sum
+from django.views.generic import TemplateView
 from .utils.agent_performance_evaluator import AgentPerformanceEvaluator
 from convochat.models import Conversation
 from analysis.models import LLMAgentPerformance
@@ -41,4 +44,19 @@ class ConversationPerformanceView(LoginRequiredMixin, generic.DetailView):
         performance_data = evaluator.evaluate_conversation(conversation.id)
 
         context['performance_data'] = performance_data
+        return context
+
+
+class OrderOverView(TemplateView):
+    template_name = 'analysis/order_analysis.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['total_orders'] = Order.objects.count()
+        context['total_revenue'] = Order.objects.aggregate(Sum('total_amount'))[
+            'total_amount__sum']
+        context['order_status_distribution'] = Order.objects.values(
+            'status').annotate(count=Count('id'))
+        context['recent_conversations'] = Conversation.objects.order_by(
+            '-created')[:10]
         return context

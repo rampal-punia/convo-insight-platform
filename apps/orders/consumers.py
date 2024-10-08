@@ -122,6 +122,7 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
             conversation,
             user_message,
             input_data,
+            predicted_intent,
             order_details,
         )
 
@@ -163,8 +164,12 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
         conversation,   # User-Ai conversation db table instance
         user_message,   # user_message db table instance
         input_data,     # Front end user message
+        predicted_intent,
         order_dict=None,
     ):
+        # if predicted_intent in ["order_status", "return_request", "cancel_order", "product_inquiry", "shipping_inquiry"]:
+        #     response = await self.handle_order_intent(predicted_intent, self.user, input_data)
+        # else:
         try:
             history = await get_conversation_history(conversation.id)
             history_str = '\n'.join(
@@ -204,6 +209,22 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
             )
         except Exception as ex:
             print(f"Unable to process response: {ex}")
+
+    async def handle_order_intent(self, intent, user, input_data):
+        '''check the feasibility of LangGraph agent instead of the below code'''
+        if intent == 'order_status':
+            # Logic to fetch and return order status
+            ...
+        elif intent == 'return_request':
+            # Logic to initiate a return request
+            ...
+        elif intent == 'cancel_order':
+            # Logic to cancel order
+            ...
+        # Add more intent-specific handlers
+        else:
+            # handle else condition
+            ...
 
     async def create_conversation_db(self, text_data):
         data = json.loads(text_data)
