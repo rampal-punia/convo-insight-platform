@@ -6,28 +6,12 @@ from decimal import Decimal
 from convochat.models import Conversation, Message, UserText, AIText
 from django.forms.models import model_to_dict
 from .models import Order, OrderConversationLink, OrderItem
-# from .tasks import process_ai_response, process_user_message, analyze_conversation_sentiment
 from .tasks import analyze_sentiment, recognize_intent
-import aiohttp
 import json
-from django.conf import settings
 from langchain_core.messages import HumanMessage, AIMessage
 from channels.db import database_sync_to_async
 from convochat.models import Conversation, Message, AIText
 from apps.convochat.utils import configure_llm
-
-# print("*"*40)
-# print("order id is: ", order_id)
-
-# Title generation API
-API_URL = "https://api-inference.huggingface.co/models/czearing/article-title-generator"
-headers = {"Authorization": f"Bearer {settings.HUGGINGFACEHUB_API_TOKEN}"}
-
-
-@database_sync_to_async
-def save_conversation_title(conversation, title):
-    conversation.title = title
-    conversation.save()
 
 
 @database_sync_to_async
@@ -57,22 +41,6 @@ def save_aitext(message, input_data):
         message=message,
         content=input_data,
     )
-
-
-async def generate_title(conversation_content):
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-                API_URL,
-                headers=headers,
-                json={
-                    "inputs": conversation_content,
-                    "parameters": {"max_length": 50, "min_length": 10}
-                }) as response:
-            result = await response.json()
-            if isinstance(result, list) and len(result) > 0:
-                return result[0]['generated_text']
-            else:
-                return "Untitled Conversation"
 
 
 def decimal_default(obj):
@@ -147,8 +115,6 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
 
         # Add all possible statuses for reference
         order_dict['all_statuses'] = dict(Order.Status.choices)
-        print("*"*40)
-        print("order dict is: ", order_dict)
 
         # Convert to JSON-compatible format
         json_compatible_dict = json.loads(
