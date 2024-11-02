@@ -186,6 +186,7 @@ file_name_converter.ipynb
 *.csv
 *.joblib
 _*.ipynb
+_*.py
 *.dill
 **/trained_bertopic_model
 **/sagemaker_integration.py
