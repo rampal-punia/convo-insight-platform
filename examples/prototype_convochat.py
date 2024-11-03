@@ -4,8 +4,6 @@ import plotly.express as px
 from datetime import datetime, timedelta
 import random
 
-# Simulated data and functions
-
 
 def generate_conversation():
     return {
