@@ -1,211 +1,211 @@
 import json
-from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from decimal import Decimal
+from typing import Annotated, TypedDict, Literal
+
+from langchain_core.messages import AIMessage, ToolMessage, HumanMessage
+from langchain_core.prompts import ChatPromptTemplate
+from langgraph.graph import StateGraph, START, END
+from langgraph.graph.message import add_messages, AnyMessage
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.prebuilt import ToolNode, tools_condition
+
+from apps.convochat.utils import configure_llm
 from convochat.models import Conversation, Message, UserText, AIText
 from django.forms.models import model_to_dict
-from .models import Order, OrderConversationLink, OrderItem
-from .tasks import analyze_sentiment, recognize_intent
-import json
-from langchain_core.messages import HumanMessage, AIMessage
-from channels.db import database_sync_to_async
-from convochat.models import Conversation, Message, AIText
-from apps.convochat.utils import configure_llm
+from .models import Order, OrderConversationLink
 
 
-@database_sync_to_async
-def get_conversation_history(conversation_id, limit=8):
-    conversation = Conversation.objects.get(id=conversation_id)
-    messages = conversation.messages.order_by('-created')[:limit]
-    return [
-        HumanMessage(content=msg.user_text.content) if msg.is_from_user else AIMessage(
-            content=msg.ai_text.content)
-        for msg in reversed(messages)
-    ]
-
-
-@database_sync_to_async
-def save_message(conversation, content_type, is_from_user=True, in_reply_to=None):
-    return Message.objects.create(
-        conversation=conversation,
-        content_type=content_type,
-        is_from_user=is_from_user,
-        in_reply_to=in_reply_to
-    )
-
-
-@database_sync_to_async
-def save_aitext(message, input_data):
-    return AIText.objects.create(
-        message=message,
-        content=input_data,
-    )
-
-
-def decimal_default(obj):
-    if isinstance(obj, Decimal):
-        return float(obj)
-    elif hasattr(obj, '__str__'):  # For model instances or other objects
-        return str(obj)
-    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+class OrderState(TypedDict):
+    messages: Annotated[list[AnyMessage], add_messages]
+    intent: str
+    order_info: dict
 
 
 class OrderSupportConsumer(AsyncWebsocketConsumer):
     async def connect(self):
-        '''Accept the connections from front-end'''
-        # get the user from scope
         self.user = self.scope['user']
-        # check if the user is authenticated
         if not self.user.is_authenticated:
             await self.close()
             return
 
-        # Get the conversation UUID from the url route
         self.conversation_id = self.scope['url_route']['kwargs'].get(
             'conversation_id')
-
         await self.accept()
         await self.send(text_data=json.dumps({
             'type': 'welcome',
-            'message': f"Welcome, {self.user}! you are now connected to the Order Support"
+            'message': f"Welcome, {self.user}! You are now connected to Order Support."
         }))
 
     async def disconnect(self, close_code):
         pass
 
     async def receive(self, text_data=None):
-        '''Run on receiving text data from front-end.'''
-        input_data, conversation, user_message, order_id, order = await self.create_conversation_db(text_data)
+        """Handle incoming WebSocket messages"""
+        data = json.loads(text_data)
+        intent = data.get('intent')
+        order_id = data.get('order_id')
+        conversation_id = data.get('uuid')
 
-        # Process the message in real-time
-        # analyze_topics.delay(conversation.id)
-        predicted_intent = recognize_intent.delay(user_message.id)
-        predicted_sentiment = analyze_sentiment.delay(user_message.id)
-
-        # Get order details asynchronously
+        # Get conversation and order details
+        conversation, order = await self.get_or_create_conversation(conversation_id, order_id)
         order_details = await self.get_order_details(order_id)
 
-        await self.process_text_response(
-            conversation,
-            user_message,
-            input_data,
-            predicted_intent,
-            order_details,
+        # Get conversation history
+        history = await self.get_conversation_history(conversation.id)
+
+        # Create and save initial message
+        user_message = await self.save_message(
+            conversation=conversation,
+            content_type='TE',
+            # content=f"Intent: {intent}",
+            is_from_user=True
         )
+        await self.save_usertext(user_message, f"Request for {intent}")
 
-    async def get_order_details(self, order_id):
-        # Fetch the order asynchronously
-        order = await sync_to_async(Order.objects.get)(id=order_id)
+        # Create and process the intent-specific graph
+        graph = self.create_intent_graph(intent, order_details)
+        config = {"configurable": {"thread_id": str(conversation.id)}}
 
-        # Convert the order to a dict asynchronously
-        order_dict = await sync_to_async(model_to_dict)(order)
+        # Initialize state with intent and order information
+        initial_state = {
+            "messages": history + [("system", f"Handle {intent} request for order {order_id}")],
+            "intent": intent,
+            "order_info": order_details
+        }
 
-        # Fetch related items asynchronously
-        items = await sync_to_async(list)(order.items.all())
-
-        # Convert items to dicts
-        item_dicts = await sync_to_async(lambda: [model_to_dict(item) for item in items])()
-
-        # Add items to the order dict
-        order_dict['items'] = item_dicts
-
-        # Add full status description
-        order_dict['status_description'] = await sync_to_async(order.get_status_display)()
-
-        # Add all possible statuses for reference
-        order_dict['all_statuses'] = dict(Order.Status.choices)
-
-        # Convert to JSON-compatible format
-        json_compatible_dict = json.loads(
-            json.dumps(order_dict, default=decimal_default)
-        )
-        print("*"*40)
-        print("order json_compatible_dict is: ", json_compatible_dict)
-
-        return json_compatible_dict
-
-    async def process_text_response(
-        self,
-        conversation,   # User-Ai conversation db table instance
-        user_message,   # user_message db table instance
-        input_data,     # Front end user message
-        predicted_intent,
-        order_dict=None,
-    ):
-        # if predicted_intent in ["order_status", "return_request", "cancel_order", "product_inquiry", "shipping_inquiry"]:
-        #     response = await self.handle_order_intent(predicted_intent, self.user, input_data)
-        # else:
-        try:
-            history = await get_conversation_history(conversation.id)
-            history_str = '\n'.join(
-                [f"{'Human' if isinstance(msg, HumanMessage) else 'AI'}:{msg.content}" for msg in history]
-            )
-            input_with_order_history = {
-                'history': history_str,
-                'input': input_data,
-                # Convert to formatted JSON string
-                'order_dict': json.dumps(order_dict, indent=2)
-            }
-
-            # Generate AI response
-            llm_response_chunks = []
-            async for chunk in configure_llm.order_main().astream_events(input_with_order_history, version='v2', include_names=['Assistant']):
-                if chunk['event'] in ['on_parser_start', 'on_parser_stream']:
-                    await self.send(text_data=json.dumps(chunk))
-
-                if chunk.get('event') == 'on_parser_end':
-                    output = chunk.get('data', {}).get('output', '')
-                    llm_response_chunks.append(output)
-            ai_response = ''.join(llm_response_chunks)
-            print(ai_response)
-
-            if not ai_response:
-                ai_response = "I apologize, but I couldn't generate a response. Please try asking your question again."
-
-            ai_message = await save_message(
-                conversation,
+        # Process through graph and send response
+        # try:
+        result = graph.invoke(initial_state, config)
+        if result and "messages" in result:
+            ai_message = await self.save_message(
+                conversation=conversation,
                 content_type='TE',
+                # content=result["messages"][-1].content,
                 is_from_user=False,
                 in_reply_to=user_message
             )
-            await save_aitext(
-                ai_message,
-                ai_response
+            await self.save_aitext(ai_message, result["messages"][-1].content)
+
+            await self.send(text_data=json.dumps({
+                'type': 'agent_response',
+                'message': result["messages"][-1].content
+            }))
+        # except Exception as e:
+        #     await self.send(text_data=json.dumps({
+        #         'type': 'error',
+        #         'message': f"Error processing request: {str(e)}"
+        #     }))
+
+    def create_intent_graph(self, intent: str, order_details: dict) -> StateGraph:
+        """Create a specialized graph based on the selected intent"""
+        prompts = {
+            "order_status": """You are an order status assistant. Use the order details to provide accurate 
+                             status updates, estimated delivery times, and tracking information.
+                             Current order details: {order_details}
+                             
+                             Conversation history:
+                             {history}
+                             
+                             Handle the following request: {messages[-1].content}""",
+
+            "return_request": """You are a returns specialist. Review the order details and eligibility for returns.
+                               Provide clear instructions for the return process, including timeframes and conditions.
+                               Current order details: {order_details}
+                               
+                               Conversation history:
+                               {history}
+                               
+                               Handle the following request: {messages[-1].content}""",
+
+            "modify_order": """You are an order modification specialist. Check if the order can still be modified
+                             and explain what changes are possible at this stage.
+                             Current order details: {order_details}
+                             
+                             Conversation history:
+                             {history}
+                             
+                             Handle the following request: {messages[-1].content}""",
+
+            "delivery_issue": """You are a delivery support specialist. Address delivery concerns and issues,
+                               providing solutions and next steps based on the order status.
+                               Current order details: {order_details}
+                               
+                               Conversation history:
+                               {history}
+                               
+                               Handle the following request: {messages[-1].content}"""
+        }
+
+        # Create the prompt for the selected intent
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", prompts.get(intent, prompts["order_status"]))
+        ])
+
+        # Create the graph
+        builder = StateGraph(OrderState)
+
+        # Define the agent node
+        def agent(state: OrderState):
+            llm = configure_llm.LLMConfig.get_llm(
+                model_name='gpt-4o-mini',
+                model_provider='openai'
             )
-        except Exception as ex:
-            print(f"Unable to process response: {ex}")
+            response = llm.invoke(state["messages"])
+            print("response from model is: ", response)
+            print("state['messages'] is: ", state["messages"])
+            return {"messages": [response]}
 
-    async def handle_order_intent(self, intent, user, input_data):
-        '''check the feasibility of LangGraph agent instead of the below code'''
-        if intent == 'order_status':
-            # Logic to fetch and return order status
-            ...
-        elif intent == 'return_request':
-            # Logic to initiate a return request
-            ...
-        elif intent == 'cancel_order':
-            # Logic to cancel order
-            ...
-        # Add more intent-specific handlers
-        else:
-            # handle else condition
-            ...
+        # Add nodes and edges
+        builder.add_node("agent", agent)
+        builder.add_edge(START, "agent")
+        builder.add_edge("agent", END)
 
-    async def create_conversation_db(self, text_data):
-        data = json.loads(text_data)
-        input_type = data.get('type')   # front-end message
-        input_data = data.get('message')
-        conversation_id = data.get('uuid')
-        order_id = data.get('order_id')
+        # Compile with memory
+        memory = MemorySaver()
+        return builder.compile(checkpointer=memory)
 
-        conversation, order = await self.get_or_create_conversation(conversation_id, order_id)
-        user_message = await self.save_message(conversation, input_type, is_from_user=True)
-        await self.save_usertext(user_message, input_data)
-        return input_data, conversation, user_message, order_id, order
+    @database_sync_to_async
+    def get_conversation_history(self, conversation_id, limit=8):
+        """Fetch conversation history"""
+        conversation = Conversation.objects.get(id=conversation_id)
+        messages = conversation.messages.order_by('-created')[:limit]
+        return [
+            HumanMessage(content=msg.user_text.content) if msg.is_from_user else AIMessage(
+                content=msg.ai_text.content)
+            for msg in reversed(messages)
+        ]
+
+    @database_sync_to_async
+    def save_message(self, conversation, content_type, is_from_user=True, in_reply_to=None):
+        """Save a message to the database"""
+        return Message.objects.create(
+            conversation=conversation,
+            content_type=content_type,
+            is_from_user=is_from_user,
+            in_reply_to=in_reply_to
+        )
+
+    @database_sync_to_async
+    def save_usertext(self, message, input_data):
+        """Save user text content"""
+        return UserText.objects.create(
+            message=message,
+            content=input_data,
+        )
+
+    @database_sync_to_async
+    def save_aitext(self, message, input_data):
+        """Save AI text content"""
+        return AIText.objects.create(
+            message=message,
+            content=input_data,
+        )
 
     @database_sync_to_async
     def get_or_create_conversation(self, conversation_id, order_id):
+        """Create or get existing conversation and link it to the order"""
         conversation, created = Conversation.objects.update_or_create(
             id=conversation_id,
             defaults={
@@ -225,27 +225,26 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
         return conversation, order
 
     @database_sync_to_async
-    def save_usertext(self, message, input_data):
-        return UserText.objects.create(
-            message=message,
-            content=input_data,
+    def get_order_details(self, order_id):
+        """Fetch and format order details"""
+        order = Order.objects.get(id=order_id)
+        order_dict = model_to_dict(order)
+        items = order.items.all()
+        item_dicts = [model_to_dict(item) for item in items]
+        order_dict['items'] = item_dicts
+        order_dict['status_description'] = order.get_status_display()
+        order_dict['all_statuses'] = dict(Order.Status.choices)
+
+        # Convert to JSON-compatible format
+        json_compatible_dict = json.loads(
+            json.dumps(order_dict, default=self.decimal_default)
         )
+        return json_compatible_dict
 
-    #     # Save topic distributions
-    #     for topic, weight in topics:
-    #         TopicDistribution.objects.create(
-    #             user_text=user_text,
-    #             topic=topic,
-    #             weight=weight
-    #         )
-
-    #     return user_text
-
-    @database_sync_to_async
-    def save_message(self, conversation, content_type, is_from_user=True, in_reply_to=None):
-        return Message.objects.create(
-            conversation=conversation,
-            content_type=content_type,
-            is_from_user=is_from_user,
-            in_reply_to=in_reply_to
-        )
+    def decimal_default(self, obj):
+        """Handle Decimal serialization"""
+        if isinstance(obj, Decimal):
+            return float(obj)
+        elif hasattr(obj, '__str__'):
+            return str(obj)
+        raise TypeError(f"Object of type {type(obj)} is not JSON serializable")

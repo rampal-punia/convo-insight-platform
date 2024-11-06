@@ -22,6 +22,8 @@ urlpatterns = [
          name='general_assistant'),
     path('orders/', include('orders.urls'),
          name='orders'),
+    path('playground/', include('playground.urls'),
+         name='playground'),
 ]
 
 if settings.DEBUG:

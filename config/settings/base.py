@@ -49,6 +49,7 @@ LOCAL_APPS = [
     'dashboard',
     'general_assistant',
     'orders',
+    'playground',
     'products',
 ]
 
@@ -191,6 +192,7 @@ CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
 CRISPY_TEMPLATE_PACK = "bootstrap5"
 
 HUGGINGFACEHUB_API_TOKEN = config('HUGGINGFACEHUB_API_TOKEN')
+OPENAI_API_KEY = config('OPENAI_API_KEY')
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
 
