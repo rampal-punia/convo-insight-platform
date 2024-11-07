@@ -167,48 +167,132 @@ class Intent(models.Model):
         return self.name
 
 
+# Modified Topic Model (convochat_models.py)
 class Topic(models.Model):
+    class Category(models.TextChoices):
+        PRODUCT = 'PR', _('Product-Related')
+        ORDER = 'OR', _('Order Management')
+        PAYMENT = 'PA', _('Payment & Account')
+        EXPERIENCE = 'EX', _('Customer Experience')
+
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True)
+    category = models.CharField(
+        max_length=2,
+        choices=Category.choices,
+        default=Category.PRODUCT
+    )
+    # For weighting topic importance in analysis
+    priority_weight = models.FloatField(
+        default=1.0,
+        help_text="Weight factor for topic importance in analysis"
+    )
+    # For tracking topic engagement
+    usage_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of times this topic was identified in conversations"
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Whether this topic is currently in use"
+    )
+    created = models.DateTimeField(auto_now_add=True, blank=True, null=True)
+    modified = models.DateTimeField(auto_now=True, blank=True, null=True)
+
+    class Meta:
+        ordering = ['category', 'name']
+        indexes = [
+            models.Index(fields=['category', 'name']),
+            models.Index(fields=['is_active', 'usage_count'])
+        ]
 
     def __str__(self) -> str:
+        return f"{self.get_category_display()} - {self.name}"
+
+    def increment_usage(self):
+        """Increment the usage count for this topic"""
+        self.usage_count += 1
+        self.save(update_fields=['usage_count', 'modified'])
+
+
+class SentimentCategory(models.Model):
+    """Base sentiment categories that can be used across the system"""
+    name = models.CharField(
+        max_length=100, unique=True)  # e.g., "Positive", "Negative", "Neutral"
+    description = models.TextField(
+        help_text="Description of when this sentiment category should be used"
+    )
+    priority_weight = models.FloatField(
+        default=1.0,
+        help_text="Weight factor for sentiment importance in analysis"
+    )
+
+    class Meta:
+        verbose_name_plural = "Sentiment Categories"
+
+    def __str__(self):
         return self.name
 
 
-class Sentiment(models.Model):
-    class SentimentCategory(models.TextChoices):
-        POSITIVE = 'PO', _('Positive')
-        NEGATIVE = 'NE', _('Negative')
-        NEUTRAL = 'NU', _('Neutral')
-
-    class GranularSentiment(models.TextChoices):
-        FRUSTRATION = 'FR', _('Frustration')
-        SATISFACTION = 'SA', _('Satisfaction')
-        INQUIRY = 'IN', _('Inquiry')
-        ANGER = 'AN', _('Anger')
-        HAPPINESS = 'HA', _('Happiness')
-        CONFUSION = 'CO', _('Confusion')
-        URGENCY = 'UR', _('Urgency')
-        # Add more granular categories as needed
-
-    category = models.CharField(
-        max_length=2,
-        choices=SentimentCategory.choices
+class GranularEmotion(models.Model):
+    """Detailed emotional categories for nuanced sentiment analysis"""
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(
+        help_text="Description of this emotional category and when it applies"
     )
-    score = models.FloatField(
-        help_text="Sentiment score between -1 (very negative) and 1 (very positive)"
-    )
-    message = models.OneToOneField(
-        UserText,
+    associated_sentiment = models.ForeignKey(
+        SentimentCategory,
         on_delete=models.CASCADE,
-        related_name='sentiment'
+        related_name='emotions',
+        help_text="The primary sentiment category this emotion is typically associated with"
     )
-    granular_category = models.CharField(
-        max_length=2,
-        blank=True,
-        null=True,
-        choices=GranularSentiment.choices,
+    usage_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of times this emotion was identified"
     )
 
     def __str__(self):
-        return f"{self.get_category_display()} ({self.score}) - {self.get_granular_category_display() or 'N/A'}"
+        return f"{self.name} ({self.associated_sentiment.name})"
+
+
+class Sentiment(models.Model):
+    """Individual sentiment analysis results"""
+    category = models.ForeignKey(
+        SentimentCategory,
+        on_delete=models.PROTECT,
+        related_name='sentiments'
+    )
+    granular_emotion = models.ForeignKey(
+        GranularEmotion,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='sentiments'
+    )
+    score = models.FloatField(
+        help_text="Sentiment intensity score between -1 (very negative) and 1 (very positive)"
+    )
+    confidence = models.FloatField(
+        help_text="Model's confidence in this sentiment classification (0-1)",
+        default=1.0
+    )
+    message = models.OneToOneField(
+        'UserText',
+        on_delete=models.CASCADE,
+        related_name='sentiment_analysis'
+    )
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['category', 'score']),
+        ]
+
+    def __str__(self):
+        emotion = f" ({self.granular_emotion.name})" if self.granular_emotion else ""
+        return f"{self.category.name}{emotion}: {self.score}"
+
+    def increment_emotion_usage(self):
+        """Increment the usage count for the granular emotion if present"""
+        if self.granular_emotion:
+            self.granular_emotion.usage_count += 1
+            self.granular_emotion.save(update_fields=['usage_count'])

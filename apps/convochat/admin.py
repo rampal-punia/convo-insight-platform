@@ -6,7 +6,9 @@ from .models import (
     AIText,
     Intent,
     Topic,
-    Sentiment
+    SentimentCategory,
+    Sentiment,
+    GranularEmotion,
 )
 
 
@@ -61,6 +63,16 @@ class TopicAdmin(admin.ModelAdmin):
     list_display = ('id', 'name', 'description')
 
 
+@admin.register(SentimentCategory)
+class SentimentCategoryAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name', 'description', 'priority_weight')
+
+
+@admin.register(GranularEmotion)
+class GranularEmotionAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name', 'description', 'associated_sentiment')
+
+
 @admin.register(Sentiment)
 class SentimentAdmin(admin.ModelAdmin):
-    list_display = ('id', 'category', 'message')
+    list_display = ('id', 'category', 'granular_emotion', 'message')
