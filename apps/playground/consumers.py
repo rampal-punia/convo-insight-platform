@@ -150,7 +150,7 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
         for topic in topics:
             examples.append({
                 "input": f"Category: {topic.get_category_display()}\nText:{topic.description}",
-                "output": f"This text belongs to the topic '{topic.name}' because it discusses{topic.description[:100]}..."
+                "output": f"This text belongs to the topic '{topic.name}' because it discusses {topic.description[:100]}..."
             })
         return examples
 
@@ -175,65 +175,65 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
                       .select_related('category', 'granular_emotion', 'message')[:5])
         for sentiment in sentiments:
             text = sentiment.message.content
-            emotion_text = {f" with {sentiment.granular_emotion.name}"
+            emotion_text = {f"with {sentiment.granular_emotion.name}"
                             if sentiment.granular_emotion else ""}
             examples.append({
                 "input": text,
-                "output": f"The sentiment is {sentiment.category.name}{emotion_text} with a confidence of {sentiment.confidence:.2f} and intensity score of {sentiment.score:.2f}."
+                "output": f"The sentiment is {sentiment.category.name} {emotion_text} with a confidence of {sentiment.confidence:.2f} and intensity score of {sentiment.score:.2f}."
             })
         return examples
 
     async def receive(self, text_data):
         """Handle incoming WebSocket messages"""
-        # try:
-        data = json.loads(text_data)
-        task = data.get('task')
-        text = data.get('text')
-        # default to few_shot_learning
-        method = data.get('method', 'few_shot_learning')
+        try:
+            data = json.loads(text_data)
+            task = data.get('task')
+            text = data.get('text')
+            # default to few_shot_learning
+            method = data.get('method', 'few_shot_learning')
 
-        if not text:
+            if not text:
+                await self.send(json.dumps({
+                    'error': 'No text provided'
+                }))
+                return
+
+            if method == 'finetuned':
+                # Process based on selected task
+                if task == 'sentiment':
+                    result = await self.analyze_finetuned_sentiment(text)
+                elif task == 'intent':
+                    result = await self.analyze_finetuned_intent(text)
+                elif task == 'topic':
+                    result = await self.analyze_finetuned_topic(text)
+                else:
+                    await self.send(json.dumps({
+                        'error': 'Invalid task specified'
+                    }))
+                    return
+
+            elif method == 'few_shot_learning':
+                # Process based on selected task
+                if task == 'sentiment':
+                    result = await self.analyze_sentiment(text)
+                elif task == 'intent':
+                    result = await self.analyze_intent(text)
+                elif task == 'topic':
+                    result = await self.analyze_topic(text)
+                else:
+                    await self.send(json.dumps({
+                        'error': 'Invalid task specified'
+                    }))
+                    return
+
             await self.send(json.dumps({
-                'error': 'No text provided'
+                'result': result
             }))
-            return
 
-        if method == 'finetuned':
-            # Process based on selected task
-            if task == 'sentiment':
-                result = await self.analyze_finetuned_sentiment(text)
-            elif task == 'intent':
-                result = await self.analyze_finetuned_intent(text)
-            elif task == 'topic':
-                result = await self.analyze_finetuned_topic(text)
-            else:
-                await self.send(json.dumps({
-                    'error': 'Invalid task specified'
-                }))
-                return
-
-        elif method == 'few_shot_learning':
-            # Process based on selected task
-            if task == 'sentiment':
-                result = await self.analyze_sentiment(text)
-            elif task == 'intent':
-                result = await self.analyze_intent(text)
-            elif task == 'topic':
-                result = await self.analyze_topic(text)
-            else:
-                await self.send(json.dumps({
-                    'error': 'Invalid task specified'
-                }))
-                return
-
-        await self.send(json.dumps({
-            'result': result
-        }))
-
-        # except Exception as e:
-        #     await self.send(json.dumps({
-        #         'error': f'An error occurred: {str(e)}'
-        #     }))
+        except Exception as e:
+            await self.send(json.dumps({
+                'error': f'An error occurred: {str(e)}'
+            }))
 
     async def analyze_finetuned_sentiment(self, text):
         """Analyze sentiment of input text"""
@@ -293,6 +293,8 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
     async def analyze_sentiment(self, text: str) -> Dict:
         """Analyze sentiment using ChatGPT with few-shot learning"""
         prompt = self.sentiment_prompt.format(input=text)
+        print("*"*40)
+        print("final sentiment prompt is: ", prompt)
         response = await self.llm.ainvoke(prompt)
         content = response.content.strip().upper()
 
@@ -324,6 +326,8 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
     async def analyze_intent(self, text: str) -> Dict:
         """Analyze intent using ChatGPT with few-shot learning"""
         prompt = self.intent_prompt.format(input=text)
+        print("*"*40)
+        print("final intent prompt is: ", prompt)
         response = await self.llm.ainvoke(prompt)
 
         # Extract intent from response
@@ -345,6 +349,8 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
     async def analyze_topic(self, text: str) -> Dict:
         """Analyze topic using ChatGPT with few-shot learning"""
         prompt = self.topic_prompt.format(input=text)
+        print("*"*40)
+        print("final topic prompt is: ", prompt)
         response = await self.llm.ainvoke(prompt)
 
         content = response.content.strip()

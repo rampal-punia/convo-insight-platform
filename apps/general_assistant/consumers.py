@@ -25,6 +25,7 @@ class GeneralChatConsumer(AsyncWebsocketConsumer):
             'type': 'welcome',
             'message': f"Welcome, {self.user}! You are now connected to the General-Assistant."
         }))
+        self.llm = configure_llm.get_chat_llm()
 
     async def disconnect(self, close_code):
         pass
@@ -66,8 +67,7 @@ class GeneralChatConsumer(AsyncWebsocketConsumer):
 
             # Generate AI response
             llm_response_chunks = []
-            # chain = configure_llm.main()
-            async for chunk in configure_llm.chain.astream_events(input_with_history, version='v2'):
+            async for chunk in self.llm.astream_events(input_with_history, version='v2'):
                 if chunk['event'] in ['on_parser_start', 'on_parser_stream']:
                     await self.send(text_data=json.dumps(chunk))
 

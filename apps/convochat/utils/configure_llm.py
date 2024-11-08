@@ -206,11 +206,6 @@ class ChainBuilder:
         return prompt | llm.with_config({'run_name': 'model'}) | output_parser.with_config({'run_name': run_name})
 
     @staticmethod
-    def create_order_chat_chain(prompt, llm, run_name):
-        output_parser = StrOutputParser()
-        return prompt | llm.with_config({'run_name': 'model'}) | output_parser.with_config({'run_name': run_name})
-
-    @staticmethod
     def create_qa_chain(retriever, prompt, llm, output_parser):
         return (
             {
@@ -278,39 +273,50 @@ def main(context=None):
     )
 
 
-def order_gpt_main():
+def get_general_assistant_llm(model_name='gpt-4o-mini', model_provider='openai'):
+    """Get LLM for the order support agent
+
+    Args:
+        model_name (str, optional): LLM Name. Defaults to 'gpt-4o-mini'. For huggingface Select: model_name="Mixtral-8x7B-I"
+        model_provider (str, optional): LLM Service Provider. Defaults to 'openai'. for huggingface select: 'huggingface'
+
+    Returns:
+        LLM: LLM either from openai or huggingface
+    """
     prompt = CustomPromptTemplates.get_orders_prompt()
     llm = LLMConfig.get_llm(
-        model_name='gpt-4o-mini',
-        model_provider='openai',
+        model_name=model_name,
+        model_provider=model_provider,
         temperature=0.1,
     )
-    return ChainBuilder.create_order_chat_chain(
+    return ChainBuilder.create_chat_chain(
         prompt=prompt,
         llm=llm,
         run_name='Assistant'
     )
 
 
-def order_hf_main():
-    prompt = CustomPromptTemplates.get_orders_prompt()
+def get_chat_llm(model_name='gpt-4o-mini', model_provider='openai'):
+    """Get LLM for the order support agent
+
+    Args:
+        model_name (str, optional): LLM Name. Defaults to 'gpt-4o-mini'. For huggingface Select: model_name="Mixtral-8x7B-I"
+        model_provider (str, optional): LLM Service Provider. Defaults to 'openai'. for huggingface select: 'huggingface'
+
+    Returns:
+        LLM: LLM either from openai or huggingface
+    """
+    prompt = CustomPromptTemplates.get_chat_prompt()
     llm = LLMConfig.get_llm(
-        model_name="Mixtral-8x7B-I",
-        model_provider='huggingface',
+        model_name=model_name,
+        model_provider=model_provider,
         temperature=0.1,
     )
-    return ChainBuilder.create_order_chat_chain(
+    return ChainBuilder.create_chat_chain(
         prompt=prompt,
         llm=llm,
         run_name='Assistant'
     )
-
-
-chain = ChainBuilder.create_chat_chain(
-    prompt=CustomPromptTemplates.get_chat_prompt(),
-    llm=LLMConfig.get_llm(),
-    run_name='Assistant'
-)
 
 
 async def generate_title(conversation_content):

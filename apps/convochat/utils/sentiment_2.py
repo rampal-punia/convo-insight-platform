@@ -6,7 +6,7 @@ model_name = "distilbert-base-uncased-finetuned-sst-2-english"
 tokenizer = DistilBertTokenizer.from_pretrained(model_name)
 model = DistilBertForSequenceClassification.from_pretrained(model_name)
 
-inputs = tokenizer("Hello, my dog is cute", return_tensors="pt")
+inputs = tokenizer("Hello, I had a great day", return_tensors="pt")
 with torch.no_grad():
     logits = model(**inputs).logits
 
