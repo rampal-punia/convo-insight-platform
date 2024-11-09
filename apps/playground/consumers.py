@@ -1,3 +1,4 @@
+import os
 import json
 from typing import List, Dict
 import torch
@@ -18,6 +19,11 @@ from bertopic import BERTopic
 from sentence_transformers import SentenceTransformer
 from django.db import transaction
 from convochat.models import Intent, Sentiment, GranularEmotion, Topic, SentimentCategory
+from .text_classification_vector_store import PGVectorStoreTextClassification
+from .text_classification_rag_processor import RAGProcessorTextClassification
+
+# Force CPU if CUDA is unavailable
+# device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
@@ -25,29 +31,45 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
         """Accept WebSocket connection"""
         await self.accept()
 
-        # Initialize fine-tuned models and tokenizers
-        self.sentiment_tokenizer = DistilBertTokenizer.from_pretrained(
-            "distilbert-base-uncased-finetuned-sst-2-english"
-        )
-        self.sentiment_model = DistilBertForSequenceClassification.from_pretrained(
-            "distilbert-base-uncased-finetuned-sst-2-english"
-        )
+        # Initialize fine-tuned models and tokenizers with error handling
+        try:
+            self.sentiment_tokenizer = DistilBertTokenizer.from_pretrained(
+                "distilbert-base-uncased-finetuned-sst-2-english"
+            )
+            self.sentiment_model = DistilBertForSequenceClassification.from_pretrained(
+                "distilbert-base-uncased-finetuned-sst-2-english"
+            )
+        except Exception as e:
+            print(f"Error loading sentiment model: {e}")
+            self.sentiment_model = None
 
-        self.intent_tokenizer = DistilBertTokenizer.from_pretrained(
-            "Falconsai/intent_classification"
-        )
-        self.intent_model = DistilBertForSequenceClassification.from_pretrained(
-            "Falconsai/intent_classification"
-        )
+        try:
+            self.intent_tokenizer = DistilBertTokenizer.from_pretrained(
+                "Falconsai/intent_classification"
+            )
+            self.intent_model = DistilBertForSequenceClassification.from_pretrained(
+                "Falconsai/intent_classification"
+            )
+        except Exception as e:
+            print(f"Error loading intent model: {e}")
+            self.intent_model = None
 
-        bertopic_path = "/home/ram/convo-insight-platform/apps/playground/finetuned_models/trained_bertopic_transformer_model"
-        sentence_transformer_path = "/home/ram/convo-insight-platform/apps/playground/finetuned_sentence_transformer"
-        # Load the models
-        self.topic_model = BERTopic.load(bertopic_path)
-        self.sentence_model = SentenceTransformer(sentence_transformer_path)
-        self.device = torch.device(
-            "cuda" if torch.cuda.is_available() else "cpu")
-        self.sentence_model = self.sentence_model.to(self.device)
+        try:
+            bertopic_path = "/home/ram/convo-insight-platform/apps/playground/fine_tuned_sentence_transformer/trained_bertopic_transformer_model"
+            sentence_transformer_path = "/home/ram/convo-insight-platform/apps/playground/fine_tuned_sentence_transformer"
+
+            if os.path.exists(bertopic_path) and os.path.exists(sentence_transformer_path):
+                self.topic_model = BERTopic.load(bertopic_path)
+                self.sentence_model = SentenceTransformer(
+                    sentence_transformer_path)
+            # else:
+            #     print("Model paths not found, initializing with defaults")
+            #     self.topic_model = None
+            #     self.sentence_model = None
+        except Exception as e:
+            print(f"Error loading topic model: {e}")
+            self.topic_model = None
+            self.sentence_model = None
 
         # self.topic_tokenizer = AutoTokenizer.from_pretrained(
         #     "dstefa/roberta-base_topic_classification_nyt_news"
@@ -56,19 +78,35 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
         #     "dstefa/roberta-base_topic_classification_nyt_news"
         # )
 
+        # Initialize LLM
         self.llm = ChatOpenAI(
             model='gpt-4o-mini',
             temperature=0.1
         )
 
-        # Load examples from database
-        self.topic_examples = await self.load_topic_examples()
-        self.intent_examples = await self.load_intent_examples()
-        self.sentiment_examples = await self.load_sentiment_examples()
+        # Load examples from database with error handling
+        try:
+            self.topic_examples = await self.load_topic_examples()
+            self.intent_examples = await self.load_intent_examples()
+            self.sentiment_examples = await self.load_sentiment_examples()
+        except Exception as e:
+            print(f"Error loading examples: {e}")
+            self.topic_examples = []
+            self.intent_examples = []
+            self.sentiment_examples = []
 
-        # Cache sentiment choices to avoid repeated DB calls
-        self.sentiment_categories = await self.get_sentiment_categories()
-        self.granular_emotions = await self.get_granular_emotions()
+        # Cache sentiment choices
+        try:
+            self.sentiment_categories = await self.get_sentiment_categories()
+            self.granular_emotions = await self.get_granular_emotions()
+        except Exception as e:
+            print(f"Error loading sentiment categories: {e}")
+            self.sentiment_categories = []
+            self.granular_emotions = []
+
+        self.vector_store = PGVectorStoreTextClassification()
+        self.rag_processor = RAGProcessorTextClassification(
+            self.vector_store, self.llm)
 
         # Initialize prompts
         self.setup_prompts()
@@ -237,11 +275,24 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
                     }))
                     return
 
+            elif method == 'rag':
+                # Map task to rag task types
+                task_map = {
+                    'sentiment': 'SE',
+                    'intent': 'IN',
+                    'topic': 'TO'
+                }
+                rag_task = task_map[task]
+
+                # Process using RAG
+                result = await self.rag_processor.process(text, rag_task)
+
             await self.send(json.dumps({
                 'result': result
             }))
 
         except Exception as e:
+            print(str(e))
             await self.send(json.dumps({
                 'error': f'An error occurred: {str(e)}'
             }))

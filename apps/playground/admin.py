@@ -1,3 +1,7 @@
 from django.contrib import admin
+from .models import RAGTextClassificationDocument
 
-# Register your models here.
+
+@admin.register(RAGTextClassificationDocument)
+class RAGTextClassificationDocumentAdmin(admin.ModelAdmin):
+    list_display = ('id', 'task', 'content')

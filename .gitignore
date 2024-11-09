@@ -198,4 +198,4 @@ _*.py
 **/results/
 **/wandb/
 **/finetuned_models/
-**/finetuned_sentence_transformer/
+**/fine_tuned_sentence_transformer/
