@@ -1,12 +1,11 @@
 from sentence_transformers import SentenceTransformer
 from typing import List, Dict
-import numpy as np
 from .models import RAGTextClassificationDocument
 from django.db.models import Q
 from django.db.models.expressions import RawSQL
 from django.db.models import Case, When
 from django.db.models.functions import Cast
-from pgvector.django import CosineDistance
+from pgvector.django import CosineDistance, VectorField
 from django.db import transaction
 
 
@@ -37,27 +36,35 @@ class PGVectorStoreTextClassification:
         """Search for similar documents for a given task"""
         query_embedding = self.model.encode(query)
 
-        # Using cosine similarity search
+        # Create the cosine distance expression
+        distance = CosineDistance('embedding', query_embedding.tolist())
+
+        # Use cosine distance for similarity search
         documents = RAGTextClassificationDocument.objects.filter(
             task=task
-        ).order_by(
-            CosineDistance('embedding'), query_embedding)[:k]
+        ).annotate(
+            distance=distance
+        ).order_by('distance')[:k]
 
         return documents
 
-    # def similarity_search_with_score(self,
-    #                                  query: str,
-    #                                  task: str,
-    #                                  k: int = 5) -> List[tuple[RAGTextClassificationDocument, float]]:
-    #     """Search for similar documents and return with similarity scores"""
-    #     query_embedding = self.model.encode(query)
+    def similarity_search_with_score(self,
+                                     query: str,
+                                     task: str,
+                                     k: int = 5) -> List[tuple[RAGTextClassificationDocument, float]]:
+        """Search for similar documents and return with similarity scores"""
+        # Generate embedding for query
+        query_embedding = self.model.encode(query)
 
-    #     # Annotate with distance scores and order by them
-    #     documents = RAGTextClassificationDocument.objects.filter(
-    #         task=task
-    #     ).annotate(
-    #         distance=CosineDistance('embedding', query_embedding)
-    #     ).order_by('distance')[:k]
+        # Create the cosine distance expression
+        distance = CosineDistance('embedding', query_embedding.tolist())
 
-    #     # Convert distance to similarity score (1 - distance)
-    #     return [(doc, 1 - doc.distance) for doc in documents]
+        # Annotate with distance scores and order by them
+        documents = RAGTextClassificationDocument.objects.filter(
+            task=task
+        ).annotate(
+            distance=distance
+        ).order_by('distance')[:k]
+
+        # Convert distance to similarity score (1 - distance)
+        return [(doc, 1 - doc.distance) for doc in documents]
