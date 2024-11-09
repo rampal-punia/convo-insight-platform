@@ -14,6 +14,8 @@ from langchain_core.prompts import (
     ChatPromptTemplate,
     FewShotChatMessagePromptTemplate,
 )
+from bertopic import BERTopic
+from sentence_transformers import SentenceTransformer
 from django.db import transaction
 from convochat.models import Intent, Sentiment, GranularEmotion, Topic, SentimentCategory
 
@@ -38,12 +40,21 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
             "Falconsai/intent_classification"
         )
 
-        self.topic_tokenizer = AutoTokenizer.from_pretrained(
-            "dstefa/roberta-base_topic_classification_nyt_news"
-        )
-        self.topic_model = AutoModelForSequenceClassification.from_pretrained(
-            "dstefa/roberta-base_topic_classification_nyt_news"
-        )
+        bertopic_path = "/home/ram/convo-insight-platform/apps/playground/finetuned_models/trained_bertopic_transformer_model"
+        sentence_transformer_path = "/home/ram/convo-insight-platform/apps/playground/finetuned_sentence_transformer"
+        # Load the models
+        self.topic_model = BERTopic.load(bertopic_path)
+        self.sentence_model = SentenceTransformer(sentence_transformer_path)
+        self.device = torch.device(
+            "cuda" if torch.cuda.is_available() else "cpu")
+        self.sentence_model = self.sentence_model.to(self.device)
+
+        # self.topic_tokenizer = AutoTokenizer.from_pretrained(
+        #     "dstefa/roberta-base_topic_classification_nyt_news"
+        # )
+        # self.topic_model = AutoModelForSequenceClassification.from_pretrained(
+        #     "dstefa/roberta-base_topic_classification_nyt_news"
+        # )
 
         self.llm = ChatOpenAI(
             model='gpt-4o-mini',
@@ -269,7 +280,36 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
             'score': score
         }
 
-    async def analyze_finetuned_topic(self, text):
+    async def analyze_finetuned_topic(self, text: str):
+        """Analyze topic of input text"""
+        # Ensure text is a list for BERTopic
+        if isinstance(text, str):
+            text = [text]
+
+        # Get topic prediction and probability
+        topics, probs = self.topic_model.transform(text)
+        topic_id = topics[0]  # Get first topic since we only passed one text
+        probability = probs[0]  # Get first probability
+
+        # Get topic information
+        if topic_id != -1:  # -1 indicates no topic assigned
+            topic_words = [word for word,
+                           _ in self.topic_model.get_topic(topic_id)][:10]
+            topic_repr = self.topic_model.get_representative_docs(topic_id)
+        else:
+            topic_words = []
+            topic_repr = []
+
+        return {
+            "label": topic_words,
+            # Convert numpy float to Python float
+            "score": float(probability)
+            # "label": [topic_id, topic_words],
+            # # Convert numpy float to Python float
+            # "score": (float(probability), topic_repr[:3]),
+        }
+
+    async def _analyze_finetuned_topic(self, text: str):
         """Analyze topic of input text"""
         inputs = self.topic_tokenizer(
             text, return_tensors="pt", truncation=True)

@@ -197,3 +197,5 @@ _*.py
 **/logs/
 **/results/
 **/wandb/
+**/finetuned_models/
+**/finetuned_sentence_transformer/
