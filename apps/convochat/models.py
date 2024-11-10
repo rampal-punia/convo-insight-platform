@@ -39,6 +39,13 @@ class Conversation(CreationModificationDateBase):
         choices=Status.choices,
         default=Status.ACTIVE
     )
+    # Add current_intent field
+    current_intent = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        help_text="Current conversation intent/context"
+    )
     overall_sentiment_score = models.FloatField(null=True, blank=True)
     dominant_topic = models.ForeignKey(
         'Topic',
@@ -128,20 +135,6 @@ class UserText(models.Model):
 
 
 class AIText(models.Model):
-    '''
-    Use case::
-
-        # When an agent applies a recommendation
-        recommendation = Recommendation.objects.get(id=1)  # Get a specific recommendation
-
-        ai_message = AIText.objects.create(
-        conversation=conversation,
-        content="Thank you for your patience. I understand your frustration with the delayed shipment. 
-        Let me check the status for you right away.",
-        is_from_user=False,
-        recommendation=recommendation
-        )
-    '''
     content = models.TextField(null=True, blank=True)
     message = models.OneToOneField(
         'convochat.Message',
@@ -157,6 +150,7 @@ class AIText(models.Model):
         blank=True,
         related_name='applied_messages'
     )
+    tool_calls = models.JSONField(default=list, blank=True)
 
 
 class Intent(models.Model):

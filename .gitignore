@@ -199,3 +199,4 @@ _*.py
 **/wandb/
 **/finetuned_models/
 **/fine_tuned_sentence_transformer/
+_error.md
