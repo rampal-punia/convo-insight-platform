@@ -1,11 +1,8 @@
 import json
-from typing import Annotated, TypedDict, Literal, Dict
-from datetime import datetime
+from typing import Annotated, TypedDict, Literal, Dict, AsyncIterator
 from decimal import Decimal
 
 import traceback
-import asyncio
-from typing import AsyncIterator
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 
@@ -19,6 +16,7 @@ from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
 
 from django.conf import settings
+from django.db import transaction
 from django.forms.models import model_to_dict
 from .models import Order, OrderConversationLink, OrderItem
 from convochat.models import Conversation, Message, UserText, AIText
@@ -32,6 +30,8 @@ class OrderState(TypedDict):
     order_info: dict
     intent: str
     conversation_id: str
+    modified: bool
+    confirmation_pending: bool
 
 
 class ModifyOrderQuantity(BaseModel):
@@ -167,7 +167,9 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         logger.info(
             f"WebSocket connection attempt from user {self.scope['user']}")
+
         self.user = self.scope['user']
+
         if not self.user.is_authenticated:
             logger.warning(f"Unauthenticated connection attempt")
             await self.close()
@@ -176,8 +178,10 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
         self.conversation_id = self.scope['url_route']['kwargs'].get(
             'conversation_id')
         await self.accept()
+
         logger.info(
             f"WebSocket connected for conversation {self.conversation_id}")
+
         await self.send(text_data=json.dumps({
             'type': 'welcome',
             'message': f"Welcome, {self.user}! You are now connected to Order Support."
@@ -461,61 +465,56 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
 
             if approved:
                 logger.info("User approved action, proceeding with tools")
-                events = self.graph.astream(current_state)
+                # Execute the approved action
+                result = await self.execute_tool_action(tool_calls[0], order_details)
+
+                # Update the conversation with the result
+                ai_message = await self.save_message(
+                    conversation=conversation,
+                    content_type='TE',
+                    is_from_user=False
+                )
+                await self.save_aitext(
+                    ai_message,
+                    f"Action completed successfully: {result}",
+                    tool_calls=tool_calls
+                )
+
+                # Send completion notification
+                await self.send(text_data=json.dumps({
+                    'type': 'operation_complete',
+                    'message': result,
+                    'update_elements': [
+                        {
+                            'selector': '.card[data-order-id="{}"]'.format(order_id),
+                            'html': await self.render_order_card(order_details)
+                        }
+                    ],
+                    'completion_message': 'Order successfully updated!'
+                }, default=self.decimal_default))
+
             else:
                 logger.info(f"User declined action. Reason: {reason}")
-                # Add the decline message to the state
                 decline_message = ToolMessage(
                     content=f"Action denied by user. Reason: {reason}",
                     tool_call_id=tool_calls[0].get(
                         'id', 'unknown') if tool_calls else 'unknown'
                 )
                 current_state["messages"].append(decline_message)
-                events = self.graph.astream(current_state)
 
-            async for event in events:
-                logger.debug(f"Processing event from confirmation: {event}")
+                # Save the decline message
+                ai_message = await self.save_message(
+                    conversation=conversation,
+                    content_type='TE',
+                    is_from_user=False
+                )
+                await self.save_aitext(ai_message, decline_message.content)
 
-                if event and isinstance(event, dict):
-                    messages = None
-                    if "messages" in event:
-                        messages = event["messages"]
-                    elif "agent" in event and "messages" in event["agent"]:
-                        messages = event["agent"]["messages"]
-
-                    if not messages:
-                        logger.warning(f"No messages found in event: {event}")
-                        continue
-
-                    message = messages[-1]
-                    logger.info(
-                        f"Processing message from confirmation: {message}")
-
-                    # Save the message
-                    ai_message = await self.save_message(
-                        conversation=conversation,
-                        content_type='TE',
-                        is_from_user=False
-                    )
-
-                    # Extract tool calls if they exist
-                    new_tool_calls = getattr(message, 'tool_calls', [])
-                    if new_tool_calls:
-                        await self.save_aitext(ai_message, message.content, new_tool_calls)
-                        await self.send(text_data=json.dumps({
-                            'type': 'confirmation_required',
-                            'action': message.content,
-                            'tool_calls': [
-                                {"name": tc["name"], "args": tc["args"]}
-                                for tc in new_tool_calls
-                            ]
-                        }))
-                    else:
-                        await self.save_aitext(ai_message, message.content)
-                        await self.send(text_data=json.dumps({
-                            'type': 'agent_response',
-                            'message': message.content
-                        }))
+                # Send decline notification
+                await self.send(text_data=json.dumps({
+                    'type': 'agent_response',
+                    'message': f"Operation cancelled: {reason}"
+                }, default=self.decimal_default))
 
         except Exception as e:
             logger.error(f"Error in handle_confirmation: {str(e)}")
@@ -523,7 +522,7 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
             await self.send(text_data=json.dumps({
                 'type': 'error',
                 'message': f"Error processing confirmation: {str(e)}"
-            }))
+            }, default=self.decimal_default))
 
     def create_intent_graph(self, intent: str, order_details: dict, tools: list, conversation_id: str) -> StateGraph:
         """Create a specialized graph based on the selected intent"""
@@ -744,9 +743,13 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
         return conversation, order
 
     @database_sync_to_async
-    def get_order_details(self, order_id):
-        """Fetch and format order details"""
-        order = Order.objects.get(id=order_id)
+    def get_order_details(self, order_id, for_update=False):
+        """Fetch order details with optional locking"""
+        queryset = Order.objects.select_related('user')
+        if for_update:
+            queryset = queryset.select_for_update()
+
+        order = queryset.get(id=order_id)
         order_dict = model_to_dict(order)
         items = order.items.all()
         item_dicts = [model_to_dict(item) for item in items]
@@ -754,11 +757,9 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
         order_dict['status_description'] = order.get_status_display()
         order_dict['all_statuses'] = dict(Order.Status.choices)
 
-        # Convert to JSON-compatible format
-        json_compatible_dict = json.loads(
+        return json.loads(
             json.dumps(order_dict, default=self.decimal_default)
         )
-        return json_compatible_dict
 
     def decimal_default(self, obj):
         """Handle Decimal serialization"""
@@ -767,3 +768,229 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
         elif hasattr(obj, '__str__'):
             return str(obj)
         raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
+    async def execute_tool_action(self, tool_call, order_details):
+        """Execute the approved tool action"""
+        tool_name = tool_call.get('name')
+        tool_args = tool_call["args"]
+
+        print("*"*40)
+        print("Tool call is: ", tool_call)
+        print("*"*40)
+
+        if tool_name == 'modify_order_quantity':
+            result = await self.update_order(
+                order_id=order_details['id'],
+                update_data={
+                    'action': 'modify_quantity',
+                    'item_id': tool_args.get('product_id'),
+                    'new_quantity': tool_args.get('new_quantity')
+                },
+                order_details=order_details
+            )
+            return result
+
+        elif tool_name == 'cancel_order_item':
+            result = await self.update_order(
+                order_id=order_details['id'],
+                update_data={
+                    'action': 'cancel_item',
+                    'item_id': tool_args.get('item_id')
+                },
+                order_details=order_details
+            )
+            return result
+
+        elif tool_name == 'cancel_order':
+            result = await self.update_order(
+                order_id=order_details['id'],
+                update_data={
+                    'action': 'cancel_order'
+                },
+                order_details=order_details
+            )
+            return result
+
+        raise ValueError(f"Unknown tool: {tool_name}")
+
+    @database_sync_to_async
+    def update_order(self, order_id, update_data, order_details):
+        """
+        Update order details with proper locking for e-commerce operations
+
+        Arguments:
+            order_id: The ID of the order to update
+            update_data: Dictionary containing update information like:
+                - action: 'modify_quantity', 'cancel_item', etc.
+                - item_id: ID of the OrderItem to modify
+                - new_quantity: New quantity for the item
+                - reason: Reason for modification/cancellation
+            order_details: Current order details
+        """
+        try:
+            with transaction.atomic():
+                # Lock the order and related records
+                order = Order.objects.select_for_update().get(id=order_id)
+
+                # Validate user permissions
+                if order.user != self.user:
+                    raise PermissionError(
+                        "Not authorized to modify this order")
+
+                action = update_data.get('action')
+
+                if action == 'modify_quantity':
+                    # Get and lock the specific order item
+                    order_item = OrderItem.objects.select_for_update().get(
+                        product__id=update_data['item_id'],
+                        order=order
+                    )
+
+                    # Validate stock availability
+                    if update_data['new_quantity'] > order_item.product.stock:
+                        raise ValueError(
+                            f"Insufficient stock. Only {order_item.product.stock} available.")
+
+                    # Store old quantity for price adjustment
+                    old_quantity = order_item.quantity
+
+                    # Update quantity and price
+                    order_item.quantity = update_data['new_quantity']
+                    order_item.price = order_item.product.price * \
+                        update_data['new_quantity']
+                    order_item.save()
+
+                    # Update order total
+                    order.total_amount = sum(
+                        item.price for item in order.items.all()
+                    )
+                    order.save()
+
+                    return {
+                        'status': 'success',
+                        'message': f"Quantity updated from {old_quantity} to {update_data['new_quantity']}",
+                        'new_total': order.total_amount
+                    }
+
+                elif action == 'cancel_item':
+                    # Get and lock the specific order item
+                    order_item = OrderItem.objects.select_for_update().get(
+                        product__id=update_data['item_id'],
+                        order=order
+                    )
+
+                    # Store item details for confirmation message
+                    item_name = order_item.product.name
+                    item_quantity = order_item.quantity
+
+                    # Delete the item
+                    order_item.delete()
+
+                    # Update order total
+                    order.total_amount = sum(
+                        item.price for item in order.items.all()
+                    )
+
+                    # If no items left, mark order as cancelled
+                    if not order.items.exists():
+                        order.status = Order.Status.CANCELLED
+
+                    order.save()
+
+                    return {
+                        'status': 'success',
+                        'message': f"Removed {item_quantity}x {item_name} from order",
+                        'new_total': order.total_amount
+                    }
+
+                elif action == 'cancel_order':
+                    # Can only cancel if order is in certain states
+                    if order.status not in [Order.Status.PENDING, Order.Status.PROCESSING]:
+                        raise ValueError(
+                            "Order cannot be cancelled in its current state")
+
+                    order.status = Order.Status.CANCELLED
+                    order.save()
+
+                    return {
+                        'status': 'success',
+                        'message': f"Order #{order.id} has been cancelled",
+                        'new_status': order.get_status_display()
+                    }
+
+                else:
+                    raise ValueError(f"Unknown action: {action}")
+
+        except (Order.DoesNotExist, OrderItem.DoesNotExist):
+            raise ValueError("Order or item not found")
+        except Exception as e:
+            logger.error(f"Error updating order: {str(e)}")
+            raise
+
+    @database_sync_to_async
+    def render_order_card(self, order_details):
+        """
+        Render updated order card HTML for e-commerce order
+        Includes order details, items, status, and total
+        """
+
+        items_html = ""
+        for item in order_details['items']:
+            items_html += f"""
+                <div class="order-item mb-2">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <strong>Product:</strong> {str(item['product'])}
+                        </div>
+                        <div class="col-md-2">
+                            <strong>Qty:</strong> {str(item['quantity'])}
+                        </div>
+                        <div class="col-md-4">
+                            <strong>Price:</strong> ${str(item['price'])}
+                        </div>
+                    </div>
+                </div>
+            """
+
+        status_class = {
+            'PE': 'text-warning',  # Pending
+            'PR': 'text-info',     # Processing
+            'SH': 'text-primary',  # Shipped
+            'DE': 'text-success',  # Delivered
+            'CA': 'text-danger',   # Cancelled
+            'RT': 'text-secondary'  # Returned
+        }.get(order_details['status'], '')
+
+        return f"""
+        <div class="card mb-3" data-order-id="{str(order_details['id'])}">
+            <div class="card-header">
+                <div class="row">
+                    <div class="col-md-2">
+                        <span class="text-body-secondary">ORDER ID</span><br>
+                        Order #{str(order_details['id'])}
+                    </div>
+                    <div class="col-md-2">
+                        <span class="text-body-secondary">ORDER PLACED</span><br>
+                        {order_details['status']}
+                    </div>
+                    <div class="col-md-2">
+                        <span class="text-body-secondary">TOTAL</span><br>
+                        ${str(order_details['total_amount'])}
+                    </div>
+                    <div class="col-md-4">
+                        <span class="text-body-secondary">STATUS</span><br>
+                        <span class="{status_class}">{order_details['status_description']}</span>
+                    </div>
+                    <div class="col-md-2">
+                        <span class="text-body-secondary">SHIP TO</span><br>
+                        {order_details['user']}
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="order-items">
+                    {items_html}
+                </div>
+            </div>
+        </div>
+        """

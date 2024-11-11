@@ -12,7 +12,7 @@ User = get_user_model()
 class Order(CreationModificationDateBase):
     class Status(models.TextChoices):
         PENDING = 'PE', _('Pending')
-        PROCESSESING = 'PR', _('Processing')
+        PROCESSING = 'PR', _('Processing')
         SHIPPED = 'SH', _('Shipped')
         IN_TRANSIT = 'TR', _('In Transit')
         DELIVERED = 'DE', _('Delivered')
