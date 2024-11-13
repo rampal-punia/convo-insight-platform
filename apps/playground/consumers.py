@@ -18,6 +18,7 @@ from langchain_core.prompts import (
 from bertopic import BERTopic
 from sentence_transformers import SentenceTransformer
 from django.db import transaction
+from django.conf import settings
 from convochat.models import Intent, Sentiment, GranularEmotion, Topic, SentimentCategory
 from .text_classification_vector_store import PGVectorStoreTextClassification
 from .text_classification_rag_processor import RAGProcessorTextClassification
@@ -71,16 +72,9 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
             self.topic_model = None
             self.sentence_model = None
 
-        # self.topic_tokenizer = AutoTokenizer.from_pretrained(
-        #     "dstefa/roberta-base_topic_classification_nyt_news"
-        # )
-        # self.topic_model = AutoModelForSequenceClassification.from_pretrained(
-        #     "dstefa/roberta-base_topic_classification_nyt_news"
-        # )
-
         # Initialize LLM
         self.llm = ChatOpenAI(
-            model='gpt-4o-mini',
+            model=settings.GPT_MINI,
             temperature=0.1
         )
 
