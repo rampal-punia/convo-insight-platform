@@ -9,7 +9,7 @@ from channels.db import database_sync_to_async
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.graph.message import add_messages, AnyMessage
-from langchain_core.messages import AIMessage, ToolMessage, HumanMessage
+from langchain_core.messages import AIMessage, ToolMessage, HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
@@ -20,147 +20,10 @@ from django.db import transaction
 from django.forms.models import model_to_dict
 from .models import Order, OrderConversationLink, OrderItem
 from convochat.models import Conversation, Message, UserText, AIText
+from .utils import tool_manager as tm
 
 import logging
 logger = logging.getLogger('orders')  # Get the orders logger
-
-
-class OrderState(TypedDict):
-    messages: Annotated[list[AnyMessage], add_messages]
-    order_info: dict
-    intent: str
-    conversation_id: str
-    modified: bool
-    confirmation_pending: bool
-
-
-class ModifyOrderQuantity(BaseModel):
-    '''Tools to modify the quantity of items in an order.'''
-    order_id: int = Field(description="The ID of the order to modify")
-    product_id: int = Field(description="The ID of the product to modify")
-    new_quantity: int = Field(description="The new quantity desired")
-
-
-class CancelOrder(BaseModel):
-    '''Tool to cancel an entire order'''
-    order_id: int = Field(description="The ID of the order to cancel")
-    reason: str = Field(description="The reason for cancellation")
-
-
-class TrackOrder(BaseModel):
-    '''Tool to get detailed tracking information for an order.'''
-    order_id: int = Field(description="The ID of the order to track")
-
-
-class GetSupportInfo(BaseModel):
-    '''Tool to get support information and eligible actions for an order.'''
-    order_id: int = Field(description="The ID of the order to get support for")
-
-# Tools Implementation
-
-
-def create_order_tools(order_id: int):
-    @tool
-    async def modify_order_quantity(order_id: int, product_id: int, new_quantity: int) -> str:
-        '''Modify the quantity of a product in an order.'''
-        # try:
-        order = await database_sync_to_async(Order.objects.get)(id=order_id)
-        order_item = await database_sync_to_async(OrderItem.objects.get)(order=order, product__id=product_id)
-
-        if order.status not in ['PE', 'PR']:
-            return "Cannot modify order - it has already been shipped or delivered."
-
-        product = order_item.product
-        if new_quantity > product.stock:
-            return f"Cannot modify - only {product.stock} units available in stock."
-
-        old_quantity = order_item.quantity
-        order_item.quantity = new_quantity
-        order_item.price = product.price * new_quantity
-        await database_sync_to_async(order_item.save)()
-
-        # Update total amount
-        order.total_amount = await database_sync_to_async(sum)(
-            [item.price for item in order.items.all()]
-        )
-        await database_sync_to_async(order.save)()
-
-        return f"Successfully updated quantity from {old_quantity} to {new_quantity}."
-
-        # except Order.DoesNotExist:
-        #     return f"Order {order_id} not found."
-        # except OrderItem.DoesNotExist:
-        #     return f"Product {product_id} not found in order {order_id}."
-
-    @tool
-    async def cancel_order(order_id: int, reason: str) -> str:
-        '''Cancel an order if it hasn't been shipped'''
-        try:
-            order = await database_sync_to_async(Order.objects.get)(id=order_id)
-
-            if order.status not in ['PE', 'PR']:
-                return "Cannot cancel order - it has already been shipped or delivered."
-
-            order.status = 'CA'
-            await database_sync_to_async(order.save)()
-            return f"Order {order_id} successfully cancelled. Reason: {reason} "
-
-        except Order.DoesNotExist:
-            return f"Order {order_id} not found."
-
-    @tool
-    async def track_order(order_id: int) -> str:
-        '''Get detailed tracking information for an order.'''
-        try:
-            order = await database_sync_to_async(Order.objects.get)(id=order_id)
-            status_desc = order.get_status_display()
-            items = await database_sync_to_async(list)(order.items.all())
-
-            tracking_info = (
-                f"Order #{order.id}\n"
-                f"Status: #{status_desc}\n"
-                f"Created: #{order.created}\n"
-                f"Items: \n"
-            )
-            for item in items:
-                tracking_info += f"- {item.quantity}x {item.product.name}\n"
-
-            return tracking_info
-
-        except Order.DoesNotExist:
-            return f"Order {order_id} not found."
-
-    @tool
-    async def get_support_info(order_id: int) -> str:
-        '''Get support information and eligible actions for an order.'''
-        try:
-            order = await database_sync_to_async(Order.objects.get)(id=order_id)
-
-            info = (
-                f"Order #{order.id} Support Information\n"
-                f"Current Status: {order.get_status_display()}\n"
-                f"Order Date: {order.created}\n\n"
-                "Available Actions:\n"
-            )
-
-            if order.status in ['PE', 'PR']:
-                info += "- Modify quantities\n- Cancel order\n"
-            elif order.status in ['SH', 'TR']:
-                info += "- Track shipment\n"
-            elif order.status in ['DE']:
-                info += "- Return items (within 30 days of delivery)\n"
-
-            return info
-
-        except Order.DoesNotExist:
-            return f"Order {order_id} not found."
-
-    return [
-        modify_order_quantity,
-        cancel_order,
-        track_order,
-        get_support_info
-    ]
 
 
 class OrderSupportConsumer(AsyncWebsocketConsumer):
@@ -169,6 +32,8 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
             f"WebSocket connection attempt from user {self.scope['user']}")
 
         self.user = self.scope['user']
+        self.message_count = 0
+        self.summary_threshold = 5
 
         if not self.user.is_authenticated:
             logger.warning(f"Unauthenticated connection attempt")
@@ -205,6 +70,9 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
             logger.info(f"Received message type: {message_type}")
             logger.debug(f"Full message data: {data}")
 
+            # Increment message count
+            self.message_count += 1
+
             if message_type == 'intent':
                 await self.handle_intent(data)
             elif message_type == 'message':
@@ -218,6 +86,11 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
                     'type': 'error',
                     'message': 'Unknown message type'
                 }))
+
+            # Check if we should summarize
+            if self.message_count >= self.summary_threshold:
+                await self.trigger_summarization()
+                self.message_count = 0
 
         except Exception as e:
             logger.error(f"Error in receive: {str(e)}")
@@ -245,7 +118,7 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
             conversation_messages = await self.get_conversation_messages(conversation.id)
 
             # Initialize tools and graph
-            tools = create_order_tools(order_id)
+            tools = tm.create_order_tools(order_id)
             self.graph = self.create_intent_graph(
                 intent, order_details, tools, conversation.id)
 
@@ -337,6 +210,51 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
             await self.send(text_data=json.dumps({
                 'type': 'error',
                 'message': f"Error processing intent: {str(e)}"
+            }))
+
+    async def trigger_summarization(self):
+        '''Trigger conversation summarization'''
+        try:
+            # Create tools with current conversation context
+            tools = await self.create_conversation_tools(self.conversation_id)
+
+            # Find the summarization tool
+            summarize_tool = next(
+                tool for tool in tools
+                if tool.name == "summarize_conversation"
+            )
+
+            # Execute summarization
+            summary_result = await summarize_tool(
+                self.conversation_id,
+                max_length=150  # Adjust as needed
+            )
+
+            logger.info(f"Conversation summarized: {summary_result}")
+
+            # Optionally notify client about summarization
+            await self.send(text_data=json.dumps({
+                'type': 'summary_updated',
+                'summary': summary_result
+            }))
+
+        except Exception as e:
+            logger.error(f"Error during summarization: {str(e)}")
+            logger.error(traceback.format_exc())
+
+     # Add a method to manually trigger summarization
+
+    async def handle_manual_summarization(self, data):
+        """Handle manual summarization request"""
+        try:
+            max_length = data.get('max_length', 150)
+            await self.trigger_summarization()
+
+        except Exception as e:
+            logger.error(f"Error handling manual summarization: {str(e)}")
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': f"Error generating summary: {str(e)}"
             }))
 
     async def handle_message(self, data):
@@ -524,6 +442,65 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
                 'message': f"Error processing confirmation: {str(e)}"
             }, default=self.decimal_default))
 
+    async def create_conversation_tools(self, conversation_id: str):
+        '''Create all conversation-related tools including summarization '''
+
+        @tool
+        async def summarize_conversation(conversation_id: str, max_length: int = 150) -> str:
+            """Generate or update a summary of the current conversation."""
+            try:
+                # Get conversation and messages
+                conversation = await database_sync_to_async(Conversation.objects.get)(id=conversation_id)
+                messages = await database_sync_to_async(list)(
+                    Conversation.messages.order_by('created').select_related(
+                        'user_text', 'ai_text'
+                    )
+                )
+
+                # Format conversation for summarization
+                formatted_convo = "\n".join([
+                    f"{'User' if msg.is_from_user else 'Assistant'}: "
+                    f"{msg.user_text.content if msg.is_from_user else msg.ai_text.content}"
+                    for msg in messages
+                ])
+
+                # Create summarization prompt
+                current_summary = conversation.summary or ''
+                if current_summary:
+                    prompt = f"""Previous summary: {current_summary}
+
+                            New conversation content:
+                            {formatted_convo}
+                            Please provide an updated summary incorporating the new content. Focus on key points, decisions made, and any important order details discussed. Keep the summary concise (maximum {max_length} words)."""
+                else:
+                    prompt = f"""Please summarize the following conversation, focusing on key points, decisions made, and any important order details discussed. Keep the summary concise (maximum {max_length} words):
+
+                                {formatted_convo}"""
+
+                # Generate summary using your LLM
+                summary_message = await self.llm.ainvoke([
+                    SystemMessage(
+                        content="You are a helpful assistant that creates clear, concise summaries of customer service conversations."),
+                    HumanMessage(content=prompt)
+                ])
+
+                # Update conversation summary
+                @database_sync_to_async
+                def update_summary():
+                    with transaction.atomic():
+                        conversation.summary = summary_message.content
+                        conversation.save()
+
+                await update_summary()
+
+                return f"Summary updated: {summary_message.content}"
+
+            except Conversation.DoesNotExist:
+                return f"Conversation {conversation_id} not found."
+            except Exception as e:
+                logger.error(f"Error summarizing conversation: {str(e)}")
+                return f"Error generating summary: {str(e)}"
+
     def create_intent_graph(self, intent: str, order_details: dict, tools: list, conversation_id: str) -> StateGraph:
         """Create a specialized graph based on the selected intent"""
         prompts = {
@@ -586,7 +563,7 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
         ])
 
         # Create graph
-        builder = StateGraph(OrderState)
+        builder = StateGraph(tm.OrderState)
 
         # Bind tools to llm with explicit instructions
         llm_with_tools = self.llm.bind_tools(tools)
@@ -594,7 +571,7 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
         # Create the chain by combining prompt and LLM
         chain = prompt | llm_with_tools
 
-        async def agent(state: OrderState) -> Dict:
+        async def agent(state: tm.OrderState) -> Dict:
             try:
                 logger.debug(f"Agent processing state: {state}")
 
@@ -815,18 +792,6 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def update_order(self, order_id, update_data, order_details):
-        """
-        Update order details with proper locking for e-commerce operations
-
-        Arguments:
-            order_id: The ID of the order to update
-            update_data: Dictionary containing update information like:
-                - action: 'modify_quantity', 'cancel_item', etc.
-                - item_id: ID of the OrderItem to modify
-                - new_quantity: New quantity for the item
-                - reason: Reason for modification/cancellation
-            order_details: Current order details
-        """
         try:
             with transaction.atomic():
                 # Lock the order and related records
