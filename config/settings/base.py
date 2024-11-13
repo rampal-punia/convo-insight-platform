@@ -135,6 +135,7 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+GPT_MINI = 'gpt-4o-mini'
 
 # Internationalization
 # https://docs.djangoproject.com/en/{{ docs_version }}/topics/i18n/
