@@ -5,7 +5,6 @@ from langchain_core.runnables import RunnablePassthrough
 from langchain_community.chat_message_histories import RedisChatMessageHistory
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_huggingface import HuggingFaceEndpoint
-# from langchain_core.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 from langchain_core.output_parsers import StrOutputParser
 
 from langchain_openai import ChatOpenAI
@@ -157,7 +156,7 @@ class CustomPromptTemplates:
     def get_summarizer_prompt():
         return ChatPromptTemplate.from_messages([
             ("system", "You are a helpful summarizer."),
-            ("human", "Now, summarize these given paragraphs: {input}.")
+            ("human", "Now, summarize these conversations: {input}.")
         ])
 
     @staticmethod
