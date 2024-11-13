@@ -1,8 +1,10 @@
 import streamlit as st
 import pandas as pd
+import re
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
+from nltk.corpus import stopwords
 import random
 import joblib
 import numpy as np
@@ -18,9 +20,13 @@ import dill
 
 # Initialize spaCy and NLTK
 nlp = spacy.load('en_core_web_sm')
-nltk.download('punkt')
-nltk.download('stopwords')
-nltk.download('wordnet')
+# Download required NLTK data (run once)
+try:
+    nltk.data.find('tokenizers/punkt')
+except LookupError:
+    nltk.download('punkt')
+    nltk.download('stopwords')
+    nltk.download('wordnet')
 
 
 def analyze_sentiment(text):
@@ -49,7 +55,7 @@ def load_models():
 
         # Load intent recognition models
         intent_components = joblib.load(
-            'ml_models/intent_ml/intent_recognition_components.joblib')
+            'ml_models/intent_ml/intent_classifier_ml.joblib')
 
         # Load topic modeling components
         lda_model = joblib.load('ml_models/topic_ml/lda_model.joblib')
@@ -100,6 +106,60 @@ def preprocess_text(text):
     return tokens
 
 
+def clean_text(text):
+    """Remove placeholders and clean text."""
+    # Remove {{Order Number}} and similar placeholders
+    text = re.sub(r'\{\{[^}]+\}\}', '', text)
+    # Remove extra whitespace
+    text = re.sub(r'\s+', ' ', text)
+    # Remove special characters and digits
+    text = re.sub(r'[^\w\s]', '', text)
+    text = re.sub(r'\d+', '', text)
+    return text.strip()
+
+
+def get_document_embedding(tokens, model, vector_size=100):
+    """Convert tokens to document embedding"""
+    valid_tokens = [word for word in tokens if word in model.wv]
+    if not valid_tokens:
+        return np.zeros(vector_size)
+
+    embeddings = [model.wv[word] for word in valid_tokens]
+    return np.mean(embeddings, axis=0)
+
+
+def preprocess_intent_text(text):
+    """Clean and tokenize text."""
+    # Clean text first
+    text = clean_text(text)
+    stop_words = set(stopwords.words('english'))
+    lemmatizer = WordNetLemmatizer()
+
+    # Tokenize
+    tokens = word_tokenize(str(text).lower())
+    # Remove stopwords and lemmatize
+    tokens = [lemmatizer.lemmatize(token) for token in tokens
+              if token.isalnum() and token not in stop_words]
+    return tokens
+
+
+def prepare_features(text, component):
+    """Prepare features for a single text."""
+    # Clean and preprocess text
+    cleaned_text = clean_text(text)
+    tokens = preprocess_text(text)
+
+    # Get Word2Vec features
+    w2v_features = get_document_embedding(tokens, component['word2vec_model'])
+
+    # Get TF-IDF features
+    tfidf_features = component['tfidf_vectorizer'].transform(
+        [cleaned_text]).toarray()[0]
+
+    # Combine features
+    return np.hstack((w2v_features, tfidf_features)).reshape(1, -1)
+
+
 def analyze_text_with_models(text, models):
     # Sentiment Analysis
     def get_sentiment(text, models):
@@ -119,16 +179,17 @@ def analyze_text_with_models(text, models):
 
     # Intent Recognition
     def get_intent(text, models):
-        processed_text = preprocess_text(text)
-        embedding = np.mean([models['intent']['word2vec_model'].wv[word]
-                             for word in processed_text
-                             if word in models['intent']['word2vec_model'].wv], axis=0)
-        tfidf_features = models['intent']['tfidf_vectorizer'].transform([
-                                                                        text]).toarray()
-        combined_features = np.hstack((embedding, tfidf_features[0]))
-        dpredict = xgb.DMatrix([combined_features])
-        pred = int(models['intent']['classifier'].predict(dpredict)[0])
-        intent = models['intent']['label_encoder'].inverse_transform([pred])[0]
+        """Predict intent for given text"""
+        # Process text
+        features = prepare_features(text, models['intent'])
+
+        # Create DMatrix and predict
+        dpredict = xgb.DMatrix(features)
+        prediction = models['intent']['classifier'].predict(dpredict)
+
+        # Get predicted intent label
+        intent = models['intent']["label_encoder"].inverse_transform(
+            prediction.astype(int))[0]
         return intent
 
     # Topic Analysis
@@ -161,7 +222,7 @@ def generate_conversation():
     }
 
 
-conversations = [generate_conversation() for _ in range(50)]
+conversations = [generate_conversation() for _ in range(20)]
 
 # Main Streamlit App
 st.set_page_config(page_title="ConvoInsight Prototype", layout="wide")
