@@ -22,6 +22,8 @@ from django.conf import settings
 from convochat.models import Intent, Sentiment, GranularEmotion, Topic, SentimentCategory
 from .text_classification_vector_store import PGVectorStoreTextClassification
 from .text_classification_rag_processor import RAGProcessorTextClassification
+from .intent_recognitionwith_tr_bert import IntentModelTester
+from .sentiment_model_analysis import SentimentModelManager
 
 # Force CPU if CUDA is unavailable
 # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -40,17 +42,22 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
             self.sentiment_model = DistilBertForSequenceClassification.from_pretrained(
                 "distilbert-base-uncased-finetuned-sst-2-english"
             )
+            self.granular_sentiment_model = SentimentModelManager(
+                model_dir="apps/playground/sentiment_tr_model")
+            self.granular_sentiment_model.load_model()
         except Exception as e:
             print(f"Error loading sentiment model: {e}")
             self.sentiment_model = None
 
         try:
-            self.intent_tokenizer = DistilBertTokenizer.from_pretrained(
-                "Falconsai/intent_classification"
-            )
-            self.intent_model = DistilBertForSequenceClassification.from_pretrained(
-                "Falconsai/intent_classification"
-            )
+            # self.intent_tokenizer = DistilBertTokenizer.from_pretrained(
+            #     "Falconsai/intent_classification"
+            # )
+            # self.intent_model = DistilBertForSequenceClassification.from_pretrained(
+            #     "Falconsai/intent_classification"
+            # )
+            self.model_tester = IntentModelTester(
+                "apps/playground/bertmodel_intent_12nov24")
         except Exception as e:
             print(f"Error loading intent model: {e}")
             self.intent_model = None
@@ -303,27 +310,43 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
         score = torch.softmax(outputs.logits, dim=1)[
             0][predicted_class_id].item()
 
+        granular_sentiment = self.granular_sentiment_model.predict(text)
+
         return {
             'label': label,
-            'score': score
+            'score': score,
+            'explanation': f"Granular Sentiment: {granular_sentiment['predictions'][0]} | {granular_sentiment['confidence'][0]}"
         }
 
     async def analyze_finetuned_intent(self, text):
         """Analyze intent of input text"""
-        inputs = self.intent_tokenizer(
-            text, return_tensors="pt", truncation=True)
-        with torch.no_grad():
-            outputs = self.intent_model(**inputs)
-
-        predicted_class_id = outputs.logits.argmax().item()
-        label = self.intent_model.config.id2label[predicted_class_id]
-        score = torch.softmax(outputs.logits, dim=1)[
-            0][predicted_class_id].item()
+        prediction = self.model_tester.predict(text)
+        print("*"*40)
+        print(prediction)
+        print("*"*40)
 
         return {
-            'label': label,
-            'score': score
+            'label': prediction['intent'],
+            'score': prediction['category_confidence'],
+            'explanation': f"Intent Category: {prediction['category']} | Intent Sub-Category: {prediction['intent']} | Intent Category Confidence: {prediction['intent_confidence']}",
         }
+
+    # async def analyze_finetuned_intent(self, text):
+    #     """Analyze intent of input text"""
+    #     inputs = self.intent_tokenizer(
+    #         text, return_tensors="pt", truncation=True)
+    #     with torch.no_grad():
+    #         outputs = self.intent_model(**inputs)
+
+    #     predicted_class_id = outputs.logits.argmax().item()
+    #     label = self.intent_model.config.id2label[predicted_class_id]
+    #     score = torch.softmax(outputs.logits, dim=1)[
+    #         0][predicted_class_id].item()
+
+    #     return {
+    #         'label': label,
+    #         'score': score
+    #     }
 
     async def analyze_finetuned_topic(self, text: str):
         """Analyze topic of input text"""
