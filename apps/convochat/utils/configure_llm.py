@@ -146,10 +146,9 @@ class CustomPromptTemplates:
     @staticmethod
     def get_chat_prompt():
         return ChatPromptTemplate.from_messages([
-            ("system", "You are a helpful assistant."),
-            ('human',
-             "Conversation history:\n{history}\n\nNew User message: {input}"),
-            ("human", "Now, respond to the new message.")
+            ("system", "Direct and efficient assistant. Provide complete, accurate responses while maintaining brevity. Focus on addressing the specific query."),
+            ("human", "Context:\n{history}\n\nUser: {input}"),
+            ("human", "Respond to the query while maintaining conversation context.")
         ])
 
     @staticmethod
@@ -162,36 +161,37 @@ class CustomPromptTemplates:
     @staticmethod
     def get_doc_prompt():
         return ChatPromptTemplate.from_messages([
-            ("system", "You are an AI assistant helping to answer questions based on a given document. Use the following context to answer the user's question. If you cannot answer the question based on the context, say that you don't have enough information to answer accurately."),
-            ('human',
-             "Related Context:\n{context}\n\nNew User message: {input}"),
-            ("human", "Now, respond to the new message.")
+            ("system", "Extract relevant information from provided context to answer questions accurately. Acknowledge knowledge gaps when context is insufficient."),
+            ("human", "Context:\n{context}\n\nQuestion: {input}"),
+            ("human", "Provide direct, evidence-based response.")
         ])
 
     @staticmethod
     def get_orders_prompt():
         return ChatPromptTemplate.from_messages([
-            ("system", "You are a helpful customer support assistant for an e-commerce company."),
-            ('human', """
-            Conversation history:
-            {history}
-            
-            Order information:
-            {order_dict}
-            
-            New User message: {input}
-            """),
-            ("human", "If the query is about a specific order, reference the order details in your response. Use the full status descriptions when referring to order status. If it's a general query, provide appropriate assistance. Please provide a helpful, empathetic, and informative response. If you're unsure about any details, politely ask for clarification. Always maintain a professional and courteous tone.")
+            ("system", "E-commerce support agent. Provide accurate, empathetic responses. Reference order details when relevant. Request clarification if needed."),
+            ("human", """Context:
+                {history}
+
+                Order Data:
+                {order_dict}
+
+                Query: {input}"""),
+            ("human", "Respond professionally with relevant order details or general assistance as appropriate.")
         ])
 
     @staticmethod
     def get_doc_prompt_with_history():
         return ChatPromptTemplate.from_messages([
-            ("system", "You are an AI assistant helping to answer, in short (150 to 200 words only), the questions based on a given document. Use the following context to answer the user's question. If you cannot answer the question based on the context, say that you don't have enough information to answer accurately."),
-            ('human',
-             "Conversation history:\n{history}\n\nNew User message: {input}"),
-            ('human', "Related Context:\n{context}"),
-            ("human", "Now, respond to the new message.")
+            ("system", "Provide concise (150-200 words) answers using provided context. Reference relevant information and indicate knowledge gaps. Maintain conversation continuity."),
+            ("human", """History:
+                {history}
+
+                Query: {input}
+
+                Context:
+                {context}"""),
+            ("human", "Respond concisely with context-based information.")
         ])
 
 
