@@ -25,6 +25,7 @@ class GeneralChatConsumer(AsyncWebsocketConsumer):
             'type': 'welcome',
             'message': f"Welcome, {self.user}! You are now connected to the General-Assistant."
         }))
+
         self.llm = configure_llm.get_chat_llm()
 
     async def disconnect(self, close_code):
