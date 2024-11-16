@@ -1,4 +1,4 @@
-from typing import Annotated, TypedDict
+from typing import Annotated, TypedDict, List, Dict
 
 from langgraph.graph.message import add_messages, AnyMessage
 from langchain_core.tools import tool
@@ -11,7 +11,9 @@ from ..models import Order, OrderItem
 
 class OrderState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
+    customer_info: dict
     order_info: dict
+    cart: dict
     intent: str
     conversation_id: str
     modified: bool
@@ -25,6 +27,20 @@ class SummarizeConversation(BaseModel):
     max_length: int = Field(
         default=150,
         description="Maximum length of the summary in words"
+    )
+
+
+class ReturnRequest(BaseModel):
+    """Schema for return requests"""
+    order_id: str
+    items: List[dict] = Field(
+        description="List of items to return"
+    )
+    reason: str = Field(
+        description="Reason for return"
+    )
+    condition: str = Field(
+        description="Condition of items being returned"
     )
 
 
@@ -52,6 +68,46 @@ class GetSupportInfo(BaseModel):
 
 
 def create_order_tools(order_id: int):
+    @tool
+    async def get_read_only_tools() -> list:
+        """Read-only tools that don't require confirmation"""
+        return [
+            get_order_details,
+            #    check_order_status,
+            #    search_products,
+            #    get_return_policy
+        ]
+
+    @tool
+    async def get_order_details(order_id: str, *, config) -> dict:
+        """Fetch detailed order information using Django models."""
+        try:
+            # Get order with related items
+            order = Order.objects.select_related('user').prefetch_related(
+                'items__product'
+            ).get(
+                id=order_id,
+                user_id=config["customer_id"]
+            )
+
+            # Structure the response
+            return {
+                "order_id": str(order.id),
+                "status": order.get_status_display(),
+                "items": [
+                    {
+                        "product_id": str(item.product.id),
+                        "name": item.product.name,
+                        "quantity": item.quantity,
+                        "price": str(item.price)
+                    }
+                    for item in order.items.all()
+                ],
+                "total": str(sum(item.price * item.quantity for item in order.items.all()))
+            }
+        except Order.DoesNotExist:
+            return {"error": "Order not found"}
+
     @tool
     async def modify_order_quantity(order_id: int, product_id: int, new_quantity: int) -> str:
         '''Modify the quantity of a product in an order.'''

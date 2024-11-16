@@ -36,12 +36,12 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
 
         # Initialize fine-tuned models and tokenizers with error handling
         try:
-            self.sentiment_tokenizer = DistilBertTokenizer.from_pretrained(
-                "distilbert-base-uncased-finetuned-sst-2-english"
-            )
-            self.sentiment_model = DistilBertForSequenceClassification.from_pretrained(
-                "distilbert-base-uncased-finetuned-sst-2-english"
-            )
+            # self.sentiment_tokenizer = DistilBertTokenizer.from_pretrained(
+            #     "distilbert-base-uncased-finetuned-sst-2-english"
+            # )
+            # self.sentiment_model = DistilBertForSequenceClassification.from_pretrained(
+            #     "distilbert-base-uncased-finetuned-sst-2-english"
+            # )
             self.granular_sentiment_model = SentimentModelManager(
                 model_dir="apps/playground/sentiment_tr_model")
             self.granular_sentiment_model.load_model()
@@ -300,22 +300,47 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
 
     async def analyze_finetuned_sentiment(self, text):
         """Analyze sentiment of input text"""
-        inputs = self.sentiment_tokenizer(
-            text, return_tensors="pt", truncation=True)
-        with torch.no_grad():
-            outputs = self.sentiment_model(**inputs)
+        # inputs = self.sentiment_tokenizer(
+        #     text, return_tensors="pt", truncation=True)
+        # with torch.no_grad():
+        #     outputs = self.sentiment_model(**inputs)
 
-        predicted_class_id = outputs.logits.argmax().item()
-        label = self.sentiment_model.config.id2label[predicted_class_id]
-        score = torch.softmax(outputs.logits, dim=1)[
-            0][predicted_class_id].item()
+        # predicted_class_id = outputs.logits.argmax().item()
+        # label = self.sentiment_model.config.id2label[predicted_class_id]
+        # score = torch.softmax(outputs.logits, dim=1)[
+        #     0][predicted_class_id].item()
 
-        granular_sentiment = self.granular_sentiment_model.predict(text)
+        detected_granular_sentiment = self.granular_sentiment_model.predict(
+            text)
+        detected_score = detected_granular_sentiment['confidence'][0]
+
+        map_original_sentiment = {
+            'joy': 'neutral' if detected_score < .45 else 'Satisfaction',
+            'love': 'neutral' if detected_score < .45 else 'Gratitude',
+            'surprise': 'neutral' if detected_score < .45 else 'Appreciation',
+            'sadness': 'neutral' if detected_score < .45 else 'Disappointment',
+            'anger': 'neutral' if detected_score < .45 else 'Frustration',
+            'fear': 'neutral' if detected_score < .45 else 'Urgency',
+        }
+
+        map_original_sentiment_to_positive_negative = {
+            'joy': 'neutral' if detected_score < .45 else 'Positive',
+            'love': 'neutral' if detected_score < .45 else 'Positive',
+            'surprise': 'neutral' if detected_score < .45 else 'Positive',
+            'sadness': 'neutral' if detected_score < .45 else 'Negative',
+            'anger': 'neutral' if detected_score < .45 else 'Negative',
+            'fear': 'neutral' if detected_score < .45 else 'Negative',
+        }
+        granular_sentiment = map_original_sentiment[detected_granular_sentiment['predictions'][0]]
+        sentiment = map_original_sentiment_to_positive_negative[
+            detected_granular_sentiment['predictions'][0]]
+
+        print(text, detected_granular_sentiment, granular_sentiment, sentiment)
 
         return {
-            'label': label,
-            'score': score,
-            'explanation': f"Granular Sentiment: {granular_sentiment['predictions'][0]} | {granular_sentiment['confidence'][0]}"
+            'label': granular_sentiment,
+            'score': str(detected_score),
+            'explanation': f"For the text: '{text}', \nOverall sentiment: {sentiment}, \nGranular Sentiment: {granular_sentiment}, \nConfidence: {detected_granular_sentiment['confidence'][0]}"
         }
 
     async def analyze_finetuned_intent(self, text):
