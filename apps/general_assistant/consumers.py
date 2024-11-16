@@ -7,8 +7,8 @@ from django.core.files.base import ContentFile
 
 from .models import GeneralConversation, GeneralMessage, AudioMessage
 from convochat.utils import configure_llm
-from .models import AudioMessage
-from .services import VoiceModalHandler
+from .models import AudioMessage, ImageMessage
+from .services import VoiceModalHandler, ImageModalHandler
 
 
 class GeneralChatConsumer(AsyncWebsocketConsumer):
@@ -49,6 +49,9 @@ class GeneralChatConsumer(AsyncWebsocketConsumer):
         elif input_type == 'AU':
             await self.handle_audio_message(input_data)
 
+        elif input_type == 'IM':
+            await self.handle_image_message(input_data)
+
     async def process_text_response(
         self,
         user_message_dbi,
@@ -83,6 +86,7 @@ class GeneralChatConsumer(AsyncWebsocketConsumer):
                 try:
                     new_title = await configure_llm.generate_title(ai_response)
                     await self.save_conversation_title(new_title)
+
                     await self.send(text_data=json.dumps({
                         'type': 'title_update',
                         'title': new_title
@@ -144,6 +148,61 @@ class GeneralChatConsumer(AsyncWebsocketConsumer):
             'id': str(ai_message_dbi.id)
         }))
 
+    async def handle_image_message(self, image_data):
+        image_handler = ImageModalHandler()
+
+        # Decode base64 image data
+        img_content = base64.b64decode(image_data)
+
+        # Process image
+        processed_image, image_description = await image_handler.process_image(img_content)
+
+        # Save user's image message
+        user_message = await self.save_message('IM', is_from_user=True)
+        img_message = await self.save_image_message(user_message, processed_image, image_description)
+
+        # Send image description(Initial from the image descriptor model) to the client
+        await self.send(text_data=json.dumps({
+            'type': 'image_description',
+            'message': image_description,
+            'id': str(user_message.id)
+        }))
+
+        # Generate detailed AI response
+        ai_response = await self.generate_ai_response(image_description, user_message)
+        print("AI Response:", ai_response)
+
+        # Save AI's text message
+        ai_message = await self.save_message('IM', is_from_user=False, in_reply_to=user_message)
+        await self.save_chat_message(ai_message, ai_response)
+
+    async def generate_ai_response(self, input_text, user_message):
+        input_with_history = {
+            'history': 'User uploading image and want you to describe it in 100-150 words based on the description provided.',
+            'input': input_text
+        }
+
+        llm_response_chunks = []
+        async for chunk in self.llm.astream_events(input_with_history, version='v2'):
+            if chunk['event'] in ['on_parser_start', 'on_parser_stream']:
+                await self.send(text_data=json.dumps(chunk))
+
+            if chunk.get('event') == 'on_parser_end':
+                output = chunk.get('data', {}).get('output', '')
+                llm_response_chunks.append(output)
+
+        ai_response = ''.join(llm_response_chunks)
+        if not ai_response:
+            ai_response = "I apologize, but I couldn't generate a response. Please try asking your question again."
+
+        await self.save_message(
+            content_type='TE',
+            content=ai_response,
+            is_from_user=False,
+            in_reply_to=user_message
+        )
+        return ai_response
+
     @database_sync_to_async
     def get_or_create_conversation(self, conversation_id):
         conversation_dbi, created = GeneralConversation.objects.update_or_create(
@@ -178,6 +237,18 @@ class GeneralChatConsumer(AsyncWebsocketConsumer):
             transcript=transcript,  # This will be updated after processing
             duration=0.0  # This will be updated after processing
         )
+
+    @database_sync_to_async
+    def save_image_message(self, message, image_array, description):
+        image_message = ImageMessage.objects.create(
+            message=message,
+            width=image_array.shape[1],
+            height=image_array.shape[0],
+            description=description
+        )
+        ImageModalHandler.update_image_message(
+            image_message, image_array, description)
+        return image_message
 
     @database_sync_to_async
     def save_conversation_title(self, title):
