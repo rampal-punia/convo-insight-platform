@@ -11,6 +11,65 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.checkpoint.memory import MemorySaver
 
+'''
+LangGraph Agent Creation Steps:
+
+Taking example of `modifying order` for a customer
+
+- Define State (TypedDict, DataClass, Pydantic BaseModel)
+    - messages: Annotated[list, add_messages]
+    - order_info: dict
+    - intent: str
+    - conversation_id: str
+    - modified: bool  # Track if order was modified
+    - confirmation_pending: bool  # Track if waiting for confirmation
+
+- Define Tools (Modify Order, Add Items to cart)
+
+- Setup LLM with a Prompt with takes:
+    - Order info
+    - Intent
+    - Input
+    - Add tool to the llm using bind_tools
+
+- Graph: Initiate Graph
+    - builder = StateGraph(OrderState)
+    - Define Initial Node with following starting informations
+        - order_info: function to get_order_details(state.get('order_id')),
+        - modified: False,
+        - confirmation_pending: False
+    - Define Order Modification Node (A function to do so, After confirmation=True)
+    - Define Tool handler function `update_order_in_db`
+
+- Graph: Add Nodes And Edges to the Graph
+    # Add Nodes
+    - builder.add_node("initialize", initialize_state)
+    - builder.add_node("modifier", order_modifier)
+    - builder.add_node("tools", tool_handler)
+    
+    # Add Edges
+    - builder.add_edge(START, "initialize")
+    - builder.add_edge("initialize", "modifier")
+
+- Graph: Define next route and conditional edges
+    def route_next(state: OrderState):
+        if state.get("modified"):
+            return "tools"
+        if state.get("confirmation_pending"):
+            return "modifier"
+        return END
+    
+    builder.add_conditional_edges(
+        "modifier",
+        route_next,
+        {
+            "tools": "tools",
+            "modifier": "modifier",
+            END: END
+        }
+    )
+'''
+
 # State Definition
 class OrderState(TypedDict):
     messages: Annotated[list, add_messages]
