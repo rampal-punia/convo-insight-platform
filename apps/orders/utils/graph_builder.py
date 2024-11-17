@@ -2,6 +2,7 @@ from typing import Dict, List, Any
 import logging
 import traceback
 from dataclasses import dataclass
+import asyncio
 
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
@@ -93,6 +94,7 @@ class GraphBuilder:
         self.prompt = self._create_prompt()
         self.llm_with_tools = self.config.llm.bind_tools(self.config.tools)
         self.chain = self.prompt | self.llm_with_tools
+        self.conversation_complete = False
 
     def _create_prompt(self) -> ChatPromptTemplate:
         """Creates a prompt template based on intent"""
@@ -108,19 +110,20 @@ class GraphBuilder:
 
             # Handle tool message if present
             last_message = state["messages"][-1] if state["messages"] else None
+
+            # Don't process if we're already complete
+            if self.conversation_complete:
+                return {"messages": state["messages"]}
+
             if isinstance(last_message, ToolMessage):
                 logger.info("Processing tool response")
                 tool_response = f"Previous action result: {last_message.content}"
                 state["messages"].append(HumanMessage(content=tool_response))
 
-            # Format conversation history
-            messages = state["messages"]
-            history = self._format_conversation_history(messages)
-
-            # Get latest input
-            latest_message = messages[-1]
-            user_input = latest_message.content if hasattr(
-                latest_message, "content") else str(latest_message)
+            # Format history and get input
+            history = self._format_conversation_history(state["messages"][:-1])
+            user_input = last_message.content if hasattr(
+                last_message, "content") else str(last_message)
 
             # Invoke chain with context
             response = await self.chain.ainvoke({
@@ -131,28 +134,82 @@ class GraphBuilder:
 
             logger.info(f"LLM Response: {response}")
 
-            # Handle tool calls
-            if not response.content and response.tool_calls:
-                return {
-                    "messages": [
-                        AIMessage(
-                            content="Let me help you with that modification...",
-                            tool_calls=response.tool_calls
-                        )
-                    ]
-                }
+            # Check if this should complete the conversation
+            if isinstance(response, AIMessage):
+                content = response.content.lower() if response.content else ""
+                if any(indicator in content for indicator in [
+                    "your order status is",
+                    "current status of your order is",
+                    "tracking information shows"
+                ]):
+                    self.conversation_complete = True
+
             return {"messages": [response]}
 
         except Exception as e:
             logger.error(f"Error in agent function: {str(e)}")
-            logger.error(traceback.format_exc())
             return {
                 "messages": [
                     AIMessage(
-                        content="I apologize, but I encountered an error processing your request. Could you please try rephrasing your question?"
+                        content="I apologize, but I encountered an error. Please try again."
                     )
                 ]
             }
+
+    def _should_continue(self, state: tm.OrderState) -> bool:
+        """Determines if the conversation should continue based on state"""
+        # Check if there are any pending tool operations
+        if self.conversation_complete:
+            return False
+
+        if state.get("confirmation_pending"):
+            return True
+
+        # Check if the last message indicates a completion
+        last_message = state["messages"][-1] if state["messages"] else None
+        if isinstance(last_message, AIMessage):
+            content = last_message.content.lower() if last_message.content else ""
+            completion_indicators = [
+                "is there anything else",
+                "can i help you with anything else",
+                "is there something else",
+                "let me know if you need anything else",
+                "your order status is",  # Specific to order status checks
+                "current status of your order is",
+                "tracking information shows",
+            ]
+            if any(indicator in content for indicator in completion_indicators):
+                self.conversation_complete = True
+                return False
+
+        return True
+
+    def _tool_router(self, state: tm.OrderState) -> str:
+        """Routes to appropriate node based on state and tool calls"""
+        # Check for tool calls in the last message
+        last_message = state["messages"][-1] if state["messages"] else None
+
+        if isinstance(last_message, AIMessage) and getattr(last_message, "tool_calls", None):
+            # Specific tool routing logic
+            tool_name = last_message.tool_calls[0].get('name')
+            if tool_name in ["modify_order_quantity", "cancel_order"]:
+                state["confirmation_pending"] = True
+            return "tools"
+
+        # Check if we just completed a tool execution
+        if state.get("confirmation_pending"):
+            state["confirmation_pending"] = False
+            return "agent"
+
+        # Check completion status
+        if self.conversation_complete or not self._should_continue(state):
+            return END
+
+        # Only return to agent if we have a valid reason
+        if isinstance(last_message, (HumanMessage, ToolMessage)):
+            return "agent"
+
+        return END
 
     def _format_conversation_history(self, messages: List) -> str:
         """Formats the conversation history for the prompt"""
@@ -163,18 +220,39 @@ class GraphBuilder:
         ])
 
     def build(self) -> StateGraph:
-        """Builds and returns the configured StateGraph"""
+        """Builds and returns the configured StateGraph with enhanced flow control"""
+        # Log the initialization of graph building
+        logger.info(f"Building graph for intent: {self.config.intent}")
+
         workflow = StateGraph(tm.OrderState)
 
         # Add nodes
         workflow.add_node("agent", self._agent_function)
-        workflow.add_node('tools', ToolNode(self.config.tools))
+        workflow.add_node("tools", ToolNode(self.config.tools))
 
-        # Add edges
+        # Add edges with enhanced routing
         workflow.add_edge(START, "agent")
         workflow.add_conditional_edges(
-            'agent',
-            tools_condition,
+            "agent",
+            self._tool_router,
+            {
+                "agent": "agent",
+                "tools": "tools",
+                END: END
+            }
         )
-        workflow.add_edge("tools", "agent")
+        workflow.add_conditional_edges(
+            "tools",
+            self._tool_router,
+            {
+                "agent": "agent",
+                "tools": "tools",
+                END: END
+            }
+        )
+
+        # Log completion of graph building
+        logger.debug("Graph building completed, compiling workflow")
+
+        # Compile with only supported parameters
         return workflow.compile(interrupt_before=["tools"])

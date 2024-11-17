@@ -2,6 +2,7 @@ import json
 from typing import Dict
 from decimal import Decimal
 import logging
+import time
 
 import traceback
 from channels.generic.websocket import AsyncWebsocketConsumer
@@ -147,8 +148,12 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
                 ],
                 "intent": intent,
                 "order_info": order_details,
-                "conversation_id": str(conversation.id)
+                "conversation_id": str(conversation.id),
+                "confirmation_pending": False
             }
+            # Process through graph
+            last_sent_time = 0
+            message_buffer = []
 
             logger.debug(f"Initial state: {initial_state}")
 
@@ -158,49 +163,59 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
 
                 # Handle nested event structure
                 if isinstance(event, dict):
-                    messages = None
-                    if "messages" in event:
-                        messages = event["messages"]
-                    elif "agent" in event and "messages" in event["agent"]:
-                        messages = event["agent"]["messages"]
+                    messages = event.get("messages") or event.get(
+                        "agent", {}).get("messages")
 
                     if not messages:
                         logger.warning(
                             f"Could not find messages in event: {event}")
                         continue
 
+                    current_time = time.time()
                     message = messages[-1]
+
                     logger.info(f"Processing message: {message}\n")
 
+                    # Buffer the message
                     if isinstance(message, AIMessage):
-                        content = message.content
-                        logger.info(f"AI Message content: {content}\n")
+                        message_buffer.append(message.content)
+                        logger.info(f"AI Message content: {message.content}\n")
 
-                        # Save the AI response
-                        ai_message = await self.db_ops.save_message(
-                            conversation=conversation,
-                            content_type='TE',
-                            is_from_user=False,
-                            in_reply_to=user_message
-                        )
-                        await self.db_ops.save_aitext(ai_message, content)
+                        if (current_time - last_sent_time >= 1.0 or
+                                getattr(message, 'tool_calls', None)):
+                            # Join buffered messages and send
+                            combined_message = " ".join(message_buffer)
 
-                        # Check for tool calls
-                        if hasattr(message, 'tool_calls') and message.tool_calls:
-                            await self.send(text_data=json.dumps({
-                                'type': 'confirmation_required',
-                                'action': content,
-                                'tool_calls': [
-                                    {"name": tc["name"], "args": tc["args"]}
-                                    for tc in message.tool_calls
-                                ]
-                            }))
-                        else:
-                            # Send regular response
-                            await self.send(text_data=json.dumps({
-                                'type': 'agent_response',
-                                'message': content
-                            }))
+                            # Save the AI response
+                            ai_message = await self.db_ops.save_message(
+                                conversation=conversation,
+                                content_type='TE',
+                                is_from_user=False,
+                                in_reply_to=user_message
+                            )
+                            await self.db_ops.save_aitext(ai_message, combined_message)
+
+                            # Check for tool calls
+                            if getattr(message, 'tool_calls', None):
+                                await self.send(text_data=json.dumps({
+                                    'type': 'confirmation_required',
+                                    'action': combined_message,
+                                    'tool_calls': [
+                                        {"name": tc["name"],
+                                            "args": tc["args"]}
+                                        for tc in message.tool_calls
+                                    ]
+                                }))
+                            else:
+                                # Send regular response
+                                await self.send(text_data=json.dumps({
+                                    'type': 'agent_response',
+                                    'message': combined_message
+                                }))
+
+                            # Reset buffer and update time
+                            message_buffer = []
+                            last_sent_time = current_time
 
                     elif isinstance(message, ToolMessage):
                         logger.info(f"Tool Message received: {message}\n")
