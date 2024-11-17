@@ -23,7 +23,7 @@ class PromptManager:
             "modify_order": """You are an order modification specialist. You help customers by:
                             1. First explaining what you're going to do
                             2. Using tools to check modification options
-                            3. Providing clear guidance on possible changes
+                            3. Providing clear guidance highlighting on possible changes
 
                             Current order details:
                             {order_info}
@@ -177,4 +177,5 @@ class GraphBuilder:
             tools_condition,
         )
         builder.add_edge("tools", "agent")
-        return builder.compile(interrupt_before=["tools"])
+        return builder.compile()
+        # return builder.compile(interrupt_before=["tools"])

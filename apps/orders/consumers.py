@@ -13,7 +13,14 @@ from langchain_openai import ChatOpenAI
 from django.conf import settings
 
 from convochat.models import Conversation
-from .utils import tool_manager as tm
+from .utils.tool_manager import (
+    tool_manager,
+    BaseOrderSchema,
+    ModifyOrderQuantity,
+    CancelOrder,
+    TrackOrder,
+    GetSupportInfo
+)
 from .utils.db_utils import DatabaseOperations
 from .utils.graph_builder import GraphBuilder, GraphConfig
 
@@ -33,6 +40,7 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
             return
 
         self.db_ops = DatabaseOperations(self.user)
+        self.create_tools = tool_manager(self.db_ops)
         self.message_count = 0
         self.summary_threshold = 5
 
@@ -63,7 +71,7 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
         try:
             data = json.loads(text_data)
             message_type = data.get('type')
-            logger.info(f"Received message type: {message_type}")
+            logger.info(f"Received message type: {message_type}\n")
             logger.debug(f"Full message data: {data}")
 
             # Increment message count
@@ -98,7 +106,7 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
             order_id = data.get('order_id')
             conversation_id = data.get('uuid')
 
-            logger.info(f"Processing intent: {intent} for order: {order_id}")
+            logger.info(f"Processing intent: {intent} for order: {order_id}\n")
 
             # Get conversation and order details
             conversation, order = await self.db_ops.get_or_create_conversation(conversation_id, order_id)
@@ -111,7 +119,7 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
             conversation_messages = await self.db_ops.get_conversation_messages(conversation.id)
 
             # Initialize tools and graph
-            tools = tm.create_order_tools(order_id)
+            tools = self.create_tools()
             config = GraphConfig(
                 llm=self.llm,
                 intent=intent,
@@ -162,11 +170,11 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
                         continue
 
                     message = messages[-1]
-                    logger.info(f"Processing message: {message}")
+                    logger.info(f"Processing message: {message}\n")
 
                     if isinstance(message, AIMessage):
                         content = message.content
-                        logger.info(f"AI Message content: {content}")
+                        logger.info(f"AI Message content: {content}\n")
 
                         # Save the AI response
                         ai_message = await self.db_ops.save_message(
@@ -195,7 +203,7 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
                             }))
 
                     elif isinstance(message, ToolMessage):
-                        logger.info(f"Tool Message received: {message}")
+                        logger.info(f"Tool Message received: {message}\n")
                         # Send tool message to client if needed
                         await self.send(text_data=json.dumps({
                             'type': 'tool_response',
@@ -259,7 +267,7 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
                         continue
 
                     message = messages[-1]
-                    logger.info(f"Processing message: {message}")
+                    logger.info(f"Processing message: {message}\n")
 
                     # Save the AI response with proper tool calls handling
                     ai_message = await self.db_ops.save_message(
@@ -320,7 +328,7 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
                 # Try to get order_id from the conversation link
                 order_link = await database_sync_to_async(lambda: conversation.order_links.first())()
                 if order_link:
-                    order_id = order_link.order.id
+                    order_id = await database_sync_to_async(lambda: order_link.order.id)()
 
             if not order_id:
                 raise ValueError(
@@ -329,16 +337,10 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
             # Get order details
             order_details = await self.db_ops.get_order_details(order_id)
 
-            current_state = {
-                "messages": conversation_messages,
-                "order_info": order_details,
-                "conversation_id": str(conversation.id),
-                "intent": conversation.current_intent
-            }
-
             if approved:
                 logger.info("User approved action, proceeding with tools")
-                # Execute the approved action
+
+                # Execute the approved action using tool
                 result = await self.execute_tool_action(tool_calls[0], order_details)
 
                 # Update the conversation with the result
@@ -353,13 +355,13 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
                     tool_calls=tool_calls
                 )
 
-                # Send completion notification
+                # Send completion notification with updated card
                 await self.send(text_data=json.dumps({
                     'type': 'operation_complete',
                     'message': result,
                     'update_elements': [
                         {
-                            'selector': '.card[data-order-id="{}"]'.format(order_id),
+                            'selector': f'.card[data-order-id="{order_details["order_id"]}"]',
                             'html': await self.db_ops.render_order_card(order_details)
                         }
                     ],
@@ -367,13 +369,13 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
                 }, default=self.decimal_default))
 
             else:
-                logger.info(f"User declined action. Reason: {reason}")
                 decline_message = ToolMessage(
                     content=f"Action denied by user. Reason: {reason}",
                     tool_call_id=tool_calls[0].get(
                         'id', 'unknown') if tool_calls else 'unknown'
                 )
-                current_state["messages"].append(decline_message)
+                logger.info(
+                    f"User declined action. Reason: {decline_message}\n")
 
                 # Save the decline message
                 ai_message = await self.db_ops.save_message(
@@ -386,7 +388,7 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
                 # Send decline notification
                 await self.send(text_data=json.dumps({
                     'type': 'agent_response',
-                    'message': f"Operation cancelled: {reason}"
+                    'message': decline_message
                 }, default=self.decimal_default))
 
         except Exception as e:
@@ -406,45 +408,71 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
         raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
     async def execute_tool_action(self, tool_call, order_details):
-        """Execute the approved tool action"""
-        tool_name = tool_call.get('name')
-        tool_args = tool_call["args"]
+        """Execute the approved tool action using the tool manager"""
+        try:
+            print("*"*40)
+            print("order_details: ", order_details)
+            print("*"*40)
+            tool_name = tool_call.get('name')
+            tool_args = json.loads(tool_call.get('args')) if isinstance(
+                tool_call.get('args'), str) else tool_call.get('args')
 
-        print("*"*40)
-        print("Tool call is: ", tool_call)
-        print("*"*40)
+            logger.info(
+                f"Executing tool: {tool_name} with args: {tool_args}\n")
 
-        if tool_name == 'modify_order_quantity':
-            result = await self.db_ops.update_order(
-                order_id=order_details['id'],
-                update_data={
-                    'action': 'modify_quantity',
-                    'item_id': tool_args.get('product_id'),
+            # Get the tool from tool manager
+            tools = self.create_tools()
+            tool = next((t for t in tools if t.name == tool_name), None)
+
+            if not tool:
+                raise ValueError(f"Unknown tool: {tool_name}")
+
+            # Construct input dictionary for each tool
+            tool_input = {}
+
+            if tool_name == 'get_order_details':
+                tool_input = {
+                    'order_id': str(order_details['order_id']),
+                    # Use actual user ID instead of 'self'
+                    'customer_id': str(self.user.id)
+                }
+
+            elif tool_name == 'modify_order_quantity':
+                tool_input = {
+                    'order_id': str(order_details['order_id']),
+                    'customer_id': str(self.user.id),
+                    'product_id': tool_args.get('product_id'),
                     'new_quantity': tool_args.get('new_quantity')
-                },
-                order_details=order_details
-            )
+                }
+
+            elif tool_name == 'cancel_order':
+                tool_input = {
+                    'order_id': str(order_details['order_id']),
+                    'customer_id': str(self.user.id),
+                    'reason': tool_args.get('reason', 'User requested cancellation')
+                }
+
+            elif tool_name == 'track_order':
+                tool_input = {
+                    'order_id': str(order_details['order_id']),
+                    'customer_id': str(self.user.id)
+                }
+
+            elif tool_name == 'get_support_info':
+                tool_input = {
+                    'order_id': str(order_details['order_id']),
+                    'customer_id': str(self.user.id)
+                }
+
+            else:
+                raise ValueError(f"Unknown tool operation: {tool_name}")
+
+            logger.info(f"Prepared tool input: {tool_input}")
+            result = await tool.ainvoke(tool_input)
+            logger.info(f"Tool execution result: {result}\n")
             return result
 
-        elif tool_name == 'cancel_order_item':
-            result = await self.db_ops.update_order(
-                order_id=order_details['id'],
-                update_data={
-                    'action': 'cancel_item',
-                    'item_id': tool_args.get('item_id')
-                },
-                order_details=order_details
-            )
-            return result
-
-        elif tool_name == 'cancel_order':
-            result = await self.db_ops.update_order(
-                order_id=order_details['id'],
-                update_data={
-                    'action': 'cancel_order'
-                },
-                order_details=order_details
-            )
-            return result
-
-        raise ValueError(f"Unknown tool: {tool_name}")
+        except Exception as e:
+            logger.error(f"Error executing tool action: {str(e)}")
+            logger.error(traceback.format_exc())
+            raise

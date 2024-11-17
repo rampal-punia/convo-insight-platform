@@ -1,15 +1,16 @@
-from typing import Annotated, TypedDict, List, Dict
+import logging
 
+from typing import Annotated, TypedDict, List, Optional, Dict, Any
 from langgraph.graph.message import add_messages, AnyMessage
-from langchain_core.tools import tool
+from langchain_core.tools import tool, BaseTool
 from pydantic import BaseModel, Field
+from .db_utils import DatabaseOperations
 
-from channels.db import database_sync_to_async
-
-from ..models import Order, OrderItem
+logger = logging.getLogger('orders')
 
 
 class OrderState(TypedDict):
+    """Represents the state of an order in the system"""
     messages: Annotated[list[AnyMessage], add_messages]
     customer_info: dict
     order_info: dict
@@ -20,8 +21,42 @@ class OrderState(TypedDict):
     confirmation_pending: bool
 
 
+class BaseOrderSchema(BaseModel):
+    """Base schema for order-related tools"""
+    order_id: str = Field(description="The ID of the order")
+    customer_id: str = Field(description="The ID of the customer")
+
+
+class ModifyOrderQuantity(BaseOrderSchema):
+    '''Tools to modify the quantity of items in an order.'''
+    product_id: int = Field(description="The ID of the product to modify")
+    new_quantity: int = Field(description="The new quantity desired")
+
+
+class CancelOrder(BaseOrderSchema):
+    """Schema for order cancellation"""
+    reason: str = Field(description="The reason for cancellation")
+
+
+class TrackOrder(BaseOrderSchema):
+    """Schema for order tracking"""
+    pass
+
+
+class GetSupportInfo(BaseOrderSchema):
+    """Schema for getting support information"""
+    pass
+
+
+class ReturnRequest(BaseOrderSchema):
+    """Schema for return requests"""
+    items: List[dict] = Field(description="List of items to return")
+    reason: str = Field(description="Reason for return")
+    condition: str = Field(description="Condition of items being returned")
+
+
 class SummarizeConversation(BaseModel):
-    '''Tool for summarizing the current conversation state.'''
+    """Schema for conversation summarization"""
     conversation_id: str = Field(
         description="The ID of the conversation to summarize")
     max_length: int = Field(
@@ -30,182 +65,280 @@ class SummarizeConversation(BaseModel):
     )
 
 
-class ReturnRequest(BaseModel):
-    """Schema for return requests"""
-    order_id: str
-    items: List[dict] = Field(
-        description="List of items to return"
-    )
-    reason: str = Field(
-        description="Reason for return"
-    )
-    condition: str = Field(
-        description="Condition of items being returned"
-    )
+# class ToolManager:
+#     """Manages the creation and organization of tools for order processing"""
+
+#     def __init__(self, customer_id: str, db_ops: DatabaseOperations):
+#         self.customer_id = customer_id
+#         self.db_ops = db_ops
+def tool_manager(db_ops):
+    def create_tools() -> List[BaseTool]:
+        """Creates and returns all available tools"""
+        return [
+            get_order_details,
+            modify_order_quantity,
+            cancel_order,
+            track_order,
+            get_support_info
+        ]
+
+    @tool(args_schema=BaseOrderSchema)
+    async def get_order_details(order_id: str, customer_id: str) -> dict:
+        """Fetch detailed order information"""
+        try:
+            return await db_ops.get_order_details(order_id)
+        except Exception as e:
+            logger.error(f"Error getting order details: {str(e)}")
+            return {"error": "Failed to fetch order details"}
+
+    import logging
 
 
-class ModifyOrderQuantity(BaseModel):
+logger = logging.getLogger('orders')
+
+
+class OrderState(TypedDict):
+    """Represents the state of an order in the system"""
+    messages: Annotated[list[AnyMessage], add_messages]
+    customer_info: dict
+    order_info: dict
+    cart: dict
+    intent: str
+    conversation_id: str
+    modified: bool
+    confirmation_pending: bool
+
+
+class BaseOrderSchema(BaseModel):
+    """Base schema for order-related tools"""
+    order_id: str = Field(description="The ID of the order")
+    customer_id: str = Field(description="The ID of the customer")
+
+
+class ModifyOrderQuantity(BaseOrderSchema):
     '''Tools to modify the quantity of items in an order.'''
-    order_id: int = Field(description="The ID of the order to modify")
     product_id: int = Field(description="The ID of the product to modify")
     new_quantity: int = Field(description="The new quantity desired")
 
 
-class CancelOrder(BaseModel):
-    '''Tool to cancel an entire order'''
-    order_id: int = Field(description="The ID of the order to cancel")
+class CancelOrder(BaseOrderSchema):
+    """Schema for order cancellation"""
     reason: str = Field(description="The reason for cancellation")
 
 
-class TrackOrder(BaseModel):
-    '''Tool to get detailed tracking information for an order.'''
-    order_id: int = Field(description="The ID of the order to track")
+class TrackOrder(BaseOrderSchema):
+    """Schema for order tracking"""
+    pass
 
 
-class GetSupportInfo(BaseModel):
-    '''Tool to get support information and eligible actions for an order.'''
-    order_id: int = Field(description="The ID of the order to get support for")
+class GetSupportInfo(BaseOrderSchema):
+    """Schema for getting support information"""
+    pass
 
 
-def create_order_tools(order_id: int):
+class ReturnRequest(BaseOrderSchema):
+    """Schema for return requests"""
+    items: List[dict] = Field(description="List of items to return")
+    reason: str = Field(description="Reason for return")
+    condition: str = Field(description="Condition of items being returned")
+
+
+class SummarizeConversation(BaseModel):
+    """Schema for conversation summarization"""
+    conversation_id: str = Field(
+        description="The ID of the conversation to summarize")
+    max_length: int = Field(
+        default=150,
+        description="Maximum length of the summary in words"
+    )
+
+
+# class ToolManager:
+#     """Manages the creation and organization of tools for order processing"""
+
+#     def __init__(self, customer_id: str, db_ops: DatabaseOperations):
+#         self.customer_id = customer_id
+#         self.db_ops = db_ops
+def tool_manager(db_ops):
+    @tool(args_schema=BaseOrderSchema)
+    async def get_order_details(order_id: str, customer_id: str) -> dict:
+        """Fetch detailed order information"""
+        try:
+            return await db_ops.get_order_details(order_id)
+        except Exception as e:
+            logger.error(f"Error getting order details: {str(e)}")
+            return {"error": "Failed to fetch order details"}
+
     @tool
-    async def get_read_only_tools() -> list:
-        """Read-only tools that don't require confirmation"""
+    async def modify_order_quantity(order_id: str, customer_id: str, product_id: int, new_quantity: int) -> str:
+        """Modify the quantity of a product in an order"""
+        try:
+            # Use DatabaseOperations for the modification
+            result = await db_ops.update_order(
+                order_id,
+                {
+                    'action': 'modify_quantity',
+                    'item_id': product_id,
+                    'new_quantity': new_quantity
+                }
+            )
+            return result['message']
+        except Exception as e:
+            logger.error(f"Error modifying order quantity: {str(e)}")
+            return "Failed to modify order quantity"
+
+    @tool
+    async def cancel_order(order_id: str, customer_id: str, reason: str) -> str:
+        """Cancel an order if eligible"""
+        try:
+            result = await db_ops.update_order(
+                order_id,
+                {
+                    'action': 'cancel_order',
+                    'reason': reason
+                }
+            )
+            return result['message']
+        except Exception as e:
+            logger.error(f"Error cancelling order: {str(e)}")
+            return "Failed to cancel order"
+
+    @tool
+    async def track_order(order_id: str, customer_id: str) -> str:
+        """Get tracking information for an order"""
+        try:
+            order_details = await db_ops.get_order_details(order_id)
+            if 'error' in order_details:
+                return "Order not found"
+
+            return (
+                f"Order #{order_details['order_id']}\n"
+                f"Status: {order_details['status']}\n"
+                f"Items:\n" +
+                "\n".join([
+                    f"- {item['quantity']}x {item['name']}"
+                    for item in order_details['items']
+                ])
+            )
+        except Exception as e:
+            logger.error(f"Error tracking order: {str(e)}")
+            return "Failed to get tracking information"
+
+    @tool
+    async def get_support_info(order_id: str, customer_id: str) -> str:
+        """Get support information and available actions"""
+        try:
+            order_details = await db_ops.get_order_details(order_id)
+            if 'error' in order_details:
+                return "Order not found"
+
+            status_actions = {
+                'Pending': ["- Modify quantities", "- Cancel order"],
+                'Processing': ["- Modify quantities", "- Cancel order"],
+                'Shipped': ["- Track shipment"],
+                'In Transit': ["- Track shipment"],
+                'Delivered': ["- Return items (within 30 days of delivery)"]
+            }
+
+            return (
+                f"Order #{order_details['order_id']} Support Information\n"
+                f"Current Status: {order_details['status']}\n\n"
+                "Available Actions:\n" +
+                "\n".join(status_actions.get(order_details['status'], []))
+            )
+        except Exception as e:
+            logger.error(f"Error getting support info: {str(e)}")
+            return "Failed to get support information"
+
+    @tool(args_schema=ModifyOrderQuantity)
+    async def modify_order_quantity(order_id: str, customer_id: str, product_id: int, new_quantity: int) -> str:
+        """Modify the quantity of a product in an order"""
+        try:
+            # Use DatabaseOperations for the modification
+            result = await db_ops.update_order(
+                order_id,
+                {
+                    'action': 'modify_quantity',
+                    'item_id': product_id,
+                    'new_quantity': new_quantity
+                }
+            )
+            return result['message']
+        except Exception as e:
+            logger.error(f"Error modifying order quantity: {str(e)}")
+            return "Failed to modify order quantity"
+
+    @tool(args_schema=CancelOrder)
+    async def cancel_order(order_id: str, customer_id: str, reason: str) -> str:
+        """Cancel an order if eligible"""
+        try:
+            result = await db_ops.update_order(
+                order_id,
+                {
+                    'action': 'cancel_order',
+                    'reason': reason
+                }
+            )
+            return result['message']
+        except Exception as e:
+            logger.error(f"Error cancelling order: {str(e)}")
+            return "Failed to cancel order"
+
+    @tool(args_schema=TrackOrder)
+    async def track_order(order_id: str, customer_id: str) -> str:
+        """Get tracking information for an order"""
+        try:
+            order_details = await db_ops.get_order_details(order_id)
+            if 'error' in order_details:
+                return "Order not found"
+
+            return (
+                f"Order #{order_details['order_id']}\n"
+                f"Status: {order_details['status']}\n"
+                f"Items:\n" +
+                "\n".join([
+                    f"- {item['quantity']}x {item['name']}"
+                    for item in order_details['items']
+                ])
+            )
+        except Exception as e:
+            logger.error(f"Error tracking order: {str(e)}")
+            return "Failed to get tracking information"
+
+    @tool(args_schema=GetSupportInfo)
+    async def get_support_info(order_id: str, customer_id: str) -> str:
+        """Get support information and available actions"""
+        try:
+            order_details = await db_ops.get_order_details(order_id)
+            if 'error' in order_details:
+                return "Order not found"
+
+            status_actions = {
+                'Pending': ["- Modify quantities", "- Cancel order"],
+                'Processing': ["- Modify quantities", "- Cancel order"],
+                'Shipped': ["- Track shipment"],
+                'In Transit': ["- Track shipment"],
+                'Delivered': ["- Return items (within 30 days of delivery)"]
+            }
+
+            return (
+                f"Order #{order_details['order_id']} Support Information\n"
+                f"Current Status: {order_details['status']}\n\n"
+                "Available Actions:\n" +
+                "\n".join(status_actions.get(order_details['status'], []))
+            )
+        except Exception as e:
+            logger.error(f"Error getting support info: {str(e)}")
+            return "Failed to get support information"
+
+    def create_tools() -> List[BaseTool]:
+        """Creates and returns all available tools"""
         return [
             get_order_details,
-            #    check_order_status,
-            #    search_products,
-            #    get_return_policy
+            modify_order_quantity,
+            cancel_order,
+            track_order,
+            get_support_info
         ]
 
-    @tool
-    async def get_order_details(order_id: str, *, config) -> dict:
-        """Fetch detailed order information using Django models."""
-        try:
-            # Get order with related items
-            order = Order.objects.select_related('user').prefetch_related(
-                'items__product'
-            ).get(
-                id=order_id,
-                user_id=config["customer_id"]
-            )
-
-            # Structure the response
-            return {
-                "order_id": str(order.id),
-                "status": order.get_status_display(),
-                "items": [
-                    {
-                        "product_id": str(item.product.id),
-                        "name": item.product.name,
-                        "quantity": item.quantity,
-                        "price": str(item.price)
-                    }
-                    for item in order.items.all()
-                ],
-                "total": str(sum(item.price * item.quantity for item in order.items.all()))
-            }
-        except Order.DoesNotExist:
-            return {"error": "Order not found"}
-
-    @tool
-    async def modify_order_quantity(order_id: int, product_id: int, new_quantity: int) -> str:
-        '''Modify the quantity of a product in an order.'''
-        # try:
-        order = await database_sync_to_async(Order.objects.get)(id=order_id)
-        order_item = await database_sync_to_async(OrderItem.objects.get)(order=order, product__id=product_id)
-
-        if order.status not in ['PE', 'PR']:
-            return "Cannot modify order - it has already been shipped or delivered."
-
-        product = order_item.product
-        if new_quantity > product.stock:
-            return f"Cannot modify - only {product.stock} units available in stock."
-
-        old_quantity = order_item.quantity
-        order_item.quantity = new_quantity
-        order_item.price = product.price * new_quantity
-        await database_sync_to_async(order_item.save)()
-
-        # Update total amount
-        order.total_amount = await database_sync_to_async(sum)(
-            [item.price for item in order.items.all()]
-        )
-        await database_sync_to_async(order.save)()
-
-        return f"Successfully updated quantity from {old_quantity} to {new_quantity}."
-
-        # except Order.DoesNotExist:
-        #     return f"Order {order_id} not found."
-        # except OrderItem.DoesNotExist:
-        #     return f"Product {product_id} not found in order {order_id}."
-
-    @tool
-    async def cancel_order(order_id: int, reason: str) -> str:
-        '''Cancel an order if it hasn't been shipped'''
-        try:
-            order = await database_sync_to_async(Order.objects.get)(id=order_id)
-
-            if order.status not in ['PE', 'PR']:
-                return "Cannot cancel order - it has already been shipped or delivered."
-
-            order.status = 'CA'
-            await database_sync_to_async(order.save)()
-            return f"Order {order_id} successfully cancelled. Reason: {reason} "
-
-        except Order.DoesNotExist:
-            return f"Order {order_id} not found."
-
-    @tool
-    async def track_order(order_id: int) -> str:
-        '''Get detailed tracking information for an order.'''
-        try:
-            order = await database_sync_to_async(Order.objects.get)(id=order_id)
-            status_desc = order.get_status_display()
-            items = await database_sync_to_async(list)(order.items.all())
-
-            tracking_info = (
-                f"Order #{order.id}\n"
-                f"Status: #{status_desc}\n"
-                f"Created: #{order.created}\n"
-                f"Items: \n"
-            )
-            for item in items:
-                tracking_info += f"- {item.quantity}x {item.product.name}\n"
-
-            return tracking_info
-
-        except Order.DoesNotExist:
-            return f"Order {order_id} not found."
-
-    @tool
-    async def get_support_info(order_id: int) -> str:
-        '''Get support information and eligible actions for an order.'''
-        try:
-            order = await database_sync_to_async(Order.objects.get)(id=order_id)
-
-            info = (
-                f"Order #{order.id} Support Information\n"
-                f"Current Status: {order.get_status_display()}\n"
-                f"Order Date: {order.created}\n\n"
-                "Available Actions:\n"
-            )
-
-            if order.status in ['PE', 'PR']:
-                info += "- Modify quantities\n- Cancel order\n"
-            elif order.status in ['SH', 'TR']:
-                info += "- Track shipment\n"
-            elif order.status in ['DE']:
-                info += "- Return items (within 30 days of delivery)\n"
-
-            return info
-
-        except Order.DoesNotExist:
-            return f"Order {order_id} not found."
-
-    return [
-        modify_order_quantity,
-        cancel_order,
-        track_order,
-        get_support_info
-    ]
+    return create_tools

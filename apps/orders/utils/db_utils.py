@@ -97,7 +97,7 @@ class DatabaseOperations:
         try:
             order = Order.objects.get(id=order_id)
             return {
-                "id": str(order.id),
+                "order_id": str(order.id),
                 "status": order.get_status_display(),
                 "status_description": order.status,
                 "user": order.user,
@@ -116,7 +116,7 @@ class DatabaseOperations:
             return {"error": "Order not found"}
 
     @database_sync_to_async
-    def update_order(self, order_id, update_data, order_details):
+    def update_order(self, order_id, update_data):
         try:
             with transaction.atomic():
                 # Lock the order and related records
@@ -257,12 +257,12 @@ class DatabaseOperations:
         }.get(order_details['status'], '')
 
         return f"""
-        <div class="card mb-3" data-order-id="{str(order_details['id'])}">
+        <div class="card mb-3" data-order-id="{str(order_details['order_id'])}">
             <div class="card-header">
                 <div class="row">
                     <div class="col-md-2">
                         <span class="text-body-secondary">ORDER ID</span><br>
-                        Order #{str(order_details['id'])}
+                        Order #{str(order_details['order_id'])}
                     </div>
                     <div class="col-md-2">
                         <span class="text-body-secondary">ORDER PLACED</span><br>
