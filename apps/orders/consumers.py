@@ -153,7 +153,7 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
             logger.debug(f"Initial state: {initial_state}")
 
             # Process through graph
-            async for event in self.graph.astream(initial_state):
+            async for event in self.graph.astream(initial_state, config=settings.GRAPH_CONFIG):
                 logger.debug(f"Graph event received: {event}")
 
                 # Handle nested event structure
@@ -243,17 +243,20 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
             )
             await self.db_ops.save_usertext(user_message, user_input)
 
+            # Use the existing intent from the conversation
+            current_intent = conversation.current_intent or "general_inquiry"
+
             # Continue conversation with full context
             current_state = {
                 "messages": conversation_messages + [HumanMessage(content=user_input)],
                 "order_info": order_details,  # Add order info to state
                 "conversation_id": str(conversation.id),
-                "intent": "modify_order"
+                "intent": current_intent
             }
 
             logger.debug(f"Current state for processing: {current_state}")
 
-            async for event in self.graph.astream(current_state):
+            async for event in self.graph.astream(current_state, config=settings.GRAPH_CONFIG):
                 if event and ("messages" in event or "agent" in event):
                     # Handle nested event structure
                     messages = None

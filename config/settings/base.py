@@ -137,6 +137,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 GPT_MINI = 'gpt-4o-mini'
 REQUEST_GPT_TIMEOUT = 30
+GRAPH_CONFIG = {"recursion_limit": 30}
 
 # Internationalization
 # https://docs.djangoproject.com/en/{{ docs_version }}/topics/i18n/

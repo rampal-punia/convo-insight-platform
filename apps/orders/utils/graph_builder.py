@@ -164,18 +164,17 @@ class GraphBuilder:
 
     def build(self) -> StateGraph:
         """Builds and returns the configured StateGraph"""
-        builder = StateGraph(tm.OrderState)
+        workflow = StateGraph(tm.OrderState)
 
         # Add nodes
-        builder.add_node("agent", self._agent_function)
-        builder.add_node('tools', ToolNode(self.config.tools))
+        workflow.add_node("agent", self._agent_function)
+        workflow.add_node('tools', ToolNode(self.config.tools))
 
         # Add edges
-        builder.add_edge(START, "agent")
-        builder.add_conditional_edges(
+        workflow.add_edge(START, "agent")
+        workflow.add_conditional_edges(
             'agent',
             tools_condition,
         )
-        builder.add_edge("tools", "agent")
-        return builder.compile()
-        # return builder.compile(interrupt_before=["tools"])
+        workflow.add_edge("tools", "agent")
+        return workflow.compile(interrupt_before=["tools"])
