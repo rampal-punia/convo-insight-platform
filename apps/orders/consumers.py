@@ -134,6 +134,56 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
             # Get order details and conversation messages
             order_details = await self.db_ops.get_order_details(order_id)
 
+            # For modify intent, check status immediately
+            if intent == 'modify_order':
+                if order_details['status'] not in ['Pending', 'Processing']:
+                    status_message = f"""I notice that your order is currently in '{order_details['status']}' status. 
+                    Orders can only be modified while they are in 'Pending' or 'Processing' status.
+                    
+                    Here's what you can do with your order in its current status:
+                    """
+
+                    status_actions = {
+                        'Shipped': [
+                            "Track your shipment",
+                            "Contact support for delivery updates"
+                        ],
+                        'Delivered': [
+                            "Initiate a return (if within 30 days)",
+                            "Leave a review"
+                        ],
+                        'Cancelled': [
+                            "Place a new order",
+                            "View similar products"
+                        ],
+                        'Returned': [
+                            "Check refund status",
+                            "Place a new order"
+                        ],
+                        'In Transit': [
+                            "Track your shipment",
+                            "Update delivery preferences"
+                        ]
+                    }
+
+                    actions = status_actions.get(
+                        order_details['status'],
+                        ["Contact customer support for assistance"]
+                    )
+                    status_message += "\n" + \
+                        "\n".join(f"- {action}" for action in actions)
+
+                    await self.send(text_data=json.dumps({
+                        'type': 'agent_response',
+                        'message': status_message
+                    }))
+                    return
+
+            # Only get initial message for the intent if status check passed
+            initial_message = HumanMessage(
+                content=f"I need help with {intent} for order #{order_id}.")
+            self.current_messages = [initial_message]
+
             # Initialize graph with tool manager
             config = GraphConfig(
                 llm=self.llm,
@@ -307,6 +357,7 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
             async for event in self.graph.astream(current_state, config=settings.GRAPH_CONFIG):
                 if event and ("messages" in event or "agent" in event):
                     await self.process_graph_event(event, conversation, user_message)
+
         except Exception as e:
             logger.error(f"Error processing message: {str(e)}")
             logger.error(traceback.format_exc())
@@ -461,6 +512,12 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
             tool_input = {}
 
             if tool_name == 'modify_order_quantity':
+                can_modify, message = await self.db_ops.validate_order_status_for_modification(
+                    tool_args.get('order_id')
+                )
+                if not can_modify:
+                    return message
+
                 tool_input = {
                     'order_id': str(tool_args.get('order_id')),
                     'customer_id': str(tool_args.get('customer_id')),
@@ -479,6 +536,7 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
                 raise ValueError(f"Unknown tool operation: {tool_name}")
 
             logger.info(f"Prepared tool input: {tool_input}")
+
             result = await tool.ainvoke(tool_input)
             logger.info(f"Tool execution result: {result}")
             return result
