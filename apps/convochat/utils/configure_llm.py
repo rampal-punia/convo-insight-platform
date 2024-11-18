@@ -169,15 +169,18 @@ class CustomPromptTemplates:
     @staticmethod
     def get_orders_prompt():
         return ChatPromptTemplate.from_messages([
-            ("system", "E-commerce support agent. Provide accurate, empathetic responses. Reference order details when relevant. Request clarification if needed."),
-            ("human", """Context:
-                {history}
+            ("system", """You are a customer support assistant for order modifications. When handling order changes:
+            1. If a user specifies a quantity change, validate and confirm the change
+            2. If the user confirms (says 'yes', 'confirm', or similar), execute the change
+            3. Maintain context of previous messages to avoid asking for information already provided
+            4. For quantity changes, use the modify_order_quantity tool once confirmed
 
-                Order Data:
-                {order_dict}
-
-                Query: {input}"""),
-            ("human", "Respond professionally with relevant order details or general assistance as appropriate.")
+            Current context:
+            - Order details: {order_info}
+            - Conversation history: {history}
+            """),
+            ("human", "{input}"),
+            ("human", "Process this request while maintaining conversation context and order details.")
         ])
 
     @staticmethod
