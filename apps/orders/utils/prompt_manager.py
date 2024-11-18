@@ -13,8 +13,17 @@ class PromptManager:
         cls._prompts = {
             'modify_order': ChatPromptTemplate.from_messages([
                 ("system", """You are a customer support assistant for order modifications. 
-                When handling order changes:
-                1. If a user requests a quantity change, confirm the specific details (product and new quantity)
+                IMPORTANT: Before proceeding with any modification requests, first check the order status.
+                Orders can ONLY be modified if they are in 'Pending' or 'Processing' status.
+                Current order status is in order details.
+                
+                If the order status is not 'Pending' or 'Processing':
+                1. Politely explain that the order cannot be modified due to its current status
+                2. Provide information about what actions are possible in the current status
+                3. Do not attempt to use any modification tools
+                
+                If the order status is 'Pending' or 'Processing', then:
+                1. Confirm the specific details (product and new quantity)
                 2. Use the modify_order_quantity tool with the following parameters:
                    - order_id: from order details
                    - customer_id: from user info
@@ -35,18 +44,19 @@ class PromptManager:
                 Previous conversation: {conversation_history}
                 
                 Follow these steps:
-                1. Verify order eligibility for cancellation
-                2. Confirm cancellation with user
-                3. Use cancel_order tool with reason if confirmed
+                1. Verify order eligibility for cancellation. 
+                2. Order status must be in ['PE', 'PR'] for cancellation
+                3. Confirm cancellation with user
+                4. Use cancel_order tool with reason if confirmed
                 """),
                 ("human", "{user_input}"),
             ]),
-            'order_status': ChatPromptTemplate.from_messages([
-                ("system", """You are a customer support assistant for order status inquiries.
+            'order_detail': ChatPromptTemplate.from_messages([
+                ("system", """You are a customer support assistant for order details inquiries.
                 Current order details: {order_info}
                 Previous conversation: {conversation_history}
                 
-                Provide clear status updates and use tracking tools when needed.
+                Provide clear order details using get_order_info tool.
                 """),
                 ("human", "{user_input}"),
             ]),
