@@ -1,5 +1,5 @@
 from channels.db import database_sync_to_async
-
+import traceback
 from django.db import transaction
 from convochat.models import Conversation, Message, UserText, AIText
 from langchain_core.messages import AIMessage, ToolMessage, HumanMessage, SystemMessage
@@ -15,29 +15,25 @@ class DatabaseOperations:
 
     @database_sync_to_async
     def get_conversation_history(self, conversation_id, limit=8):
-        """Fetch conversation history"""
-        conversation = Conversation.objects.get(id=conversation_id)
-        messages = conversation.messages.order_by('-created')[:limit]
-        return [
-            HumanMessage(content=msg.user_text.content) if msg.is_from_user else AIMessage(
-                content=msg.ai_text.content)
-            for msg in reversed(messages)
-        ]
-
-    @database_sync_to_async
-    def get_conversation_messages(self, conversation_id: str) -> list[dict]:
-        """Fetch all messages for a conversation from the database"""
+        """Fetch conversation history including all message types"""
         conversation = Conversation.objects.get(id=conversation_id)
         messages = []
-        for msg in conversation.messages.all().order_by('created'):
+
+        # Get messages in correct order
+        for msg in conversation.messages.all().order_by('created')[:limit]:
             if msg.is_from_user:
                 messages.append(HumanMessage(content=msg.user_text.content))
             else:
-                # For AI messages, only include tool_calls if they exist
-                kwargs = {'content': msg.ai_text.content}
+                # For AI messages, include tool calls if they exist
                 if hasattr(msg.ai_text, 'tool_calls') and msg.ai_text.tool_calls:
-                    kwargs['tool_calls'] = msg.ai_text.tool_calls
-                messages.append(AIMessage(**kwargs))
+                    messages.append(AIMessage(
+                        content=msg.ai_text.content,
+                        additional_kwargs={
+                            'tool_calls': msg.ai_text.tool_calls}
+                    ))
+                else:
+                    messages.append(AIMessage(content=msg.ai_text.content))
+
         return messages
 
     async def get_or_create_conversation(self, conversation_id, order_id):
@@ -121,6 +117,9 @@ class DatabaseOperations:
             with transaction.atomic():
                 # Lock the order and related records
                 order = Order.objects.select_for_update().get(id=order_id)
+                # Validate order status
+                if order.status not in ['PE', 'PR']:
+                    return "Cannot modify order - it has already been shipped or delivered."
 
                 # Validate user permissions
                 if order.user != self.user:
@@ -141,6 +140,7 @@ class DatabaseOperations:
             raise ValueError("Order or item not found")
         except Exception as e:
             logger.error(f"Error updating order: {str(e)}")
+            logger.error(traceback.format_exc())
             raise
 
     def _handle_quantity_modification(self, order, update_data):

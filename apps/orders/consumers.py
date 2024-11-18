@@ -1,27 +1,19 @@
 import json
-from typing import Dict
 from decimal import Decimal
 import logging
-import time
 
 import traceback
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 
-from langchain_core.messages import AIMessage, ToolMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, ToolMessage, HumanMessage
 from langchain_openai import ChatOpenAI
+from langchain_huggingface import HuggingFaceEndpoint, ChatHuggingFace
 
 from django.conf import settings
 
 from convochat.models import Conversation
-from .utils.tool_manager import (
-    tool_manager,
-    BaseOrderSchema,
-    ModifyOrderQuantity,
-    CancelOrder,
-    TrackOrder,
-    GetSupportInfo
-)
+from .utils.tool_manager import create_tool_manager
 from .utils.db_utils import DatabaseOperations
 from .utils.graph_builder import GraphBuilder, GraphConfig
 
@@ -29,6 +21,11 @@ logger = logging.getLogger('orders')  # Get the orders logger
 
 
 class OrderSupportConsumer(AsyncWebsocketConsumer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.awaiting_confirmation = False
+        self.pending_tool_calls = None
+
     async def connect(self):
         logger.info(
             f"WebSocket connection attempt from user {self.scope['user']}")
@@ -41,9 +38,7 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
             return
 
         self.db_ops = DatabaseOperations(self.user)
-        self.create_tools = tool_manager(self.db_ops)
-        self.message_count = 0
-        self.summary_threshold = 5
+        self.tool_manager = create_tool_manager(self.db_ops)
 
         self.conversation_id = self.scope['url_route']['kwargs'].get(
             'conversation_id')
@@ -57,6 +52,17 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
             'message': f"Welcome, {self.user}! You are now connected to Order Support."
         }))
 
+        # chatmodel = HuggingFaceEndpoint(
+        #     repo_id="mistralai/Mixtral-8x7B-Instruct-v0.1",
+        #     task='chat',
+        #     huggingfacehub_api_token=settings.HUGGINGFACEHUB_API_TOKEN,
+        #     max_new_tokens=512,
+        #     temperature=0,
+        #     do_sample=False,
+        #     repetition_penalty=1.03,
+        # )
+        # self.llm = ChatHuggingFace(llm=chatmodel)
+
         self.llm = ChatOpenAI(
             model=settings.GPT_MINI,
             openai_api_key=settings.OPENAI_API_KEY,
@@ -64,7 +70,11 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
             request_timeout=settings.REQUEST_GPT_TIMEOUT,
         )
 
+        self.current_messages = []  # Add this to track current conversation
+        self.graph = None
+
     async def disconnect(self, close_code):
+        logger.info(f"WebSocket disconnected: {self.channel_name}")
         pass
 
     async def receive(self, text_data=None):
@@ -74,9 +84,6 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
             message_type = data.get('type')
             logger.info(f"Received message type: {message_type}\n")
             logger.debug(f"Full message data: {data}")
-
-            # Increment message count
-            self.message_count += 1
 
             if message_type == 'intent':
                 await self.handle_intent(data)
@@ -107,25 +114,32 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
             order_id = data.get('order_id')
             conversation_id = data.get('uuid')
 
+            # Reset message history when starting new intent
+            self.current_messages = []
+
             logger.info(f"Processing intent: {intent} for order: {order_id}\n")
 
             # Get conversation and order details
             conversation, order = await self.db_ops.get_or_create_conversation(conversation_id, order_id)
+
+            # Only get initial message for the intent
+            initial_message = HumanMessage(
+                content=f"I need help with {intent} for order #{order_id}.")
+            self.current_messages = [initial_message]
+
             # Store the intent
             conversation.current_intent = intent
             await database_sync_to_async(conversation.save)()
 
-            # Get order details and conversation messages from the database
+            # Get order details and conversation messages
             order_details = await self.db_ops.get_order_details(order_id)
-            conversation_messages = await self.db_ops.get_conversation_messages(conversation.id)
 
-            # Initialize tools and graph
-            tools = self.create_tools()
+            # Initialize graph with tool manager
             config = GraphConfig(
                 llm=self.llm,
                 intent=intent,
                 order_details=order_details,
-                tools=tools,
+                tool_manager=self.tool_manager,
                 conversation_id=conversation_id
             )
 
@@ -142,91 +156,26 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
 
             # Initialize state
             initial_state = {
-                "messages": conversation_messages + [
-                    HumanMessage(
-                        content=f"I need help with {intent} for order #{order_id}.")
-                ],
+                "messages": self.current_messages,
                 "intent": intent,
                 "order_info": order_details,
                 "conversation_id": str(conversation.id),
-                "confirmation_pending": False
+                "confirmation_pending": False,
+                "completed": False
             }
-            # Process through graph
-            last_sent_time = 0
-            message_buffer = []
 
             logger.debug(f"Initial state: {initial_state}")
 
             # Process through graph
             async for event in self.graph.astream(initial_state, config=settings.GRAPH_CONFIG):
-                logger.debug(f"Graph event received: {event}")
+                if event.get("error"):
+                    await self.send(text_data=json.dumps({
+                        'type': 'error',
+                        'message': event["error"]
+                    }))
+                    return
 
-                # Handle nested event structure
-                if isinstance(event, dict):
-                    messages = event.get("messages") or event.get(
-                        "agent", {}).get("messages")
-
-                    if not messages:
-                        logger.warning(
-                            f"Could not find messages in event: {event}")
-                        continue
-
-                    current_time = time.time()
-                    message = messages[-1]
-
-                    logger.info(f"Processing message: {message}\n")
-
-                    # Buffer the message
-                    if isinstance(message, AIMessage):
-                        message_buffer.append(message.content)
-                        logger.info(f"AI Message content: {message.content}\n")
-
-                        if (current_time - last_sent_time >= 1.0 or
-                                getattr(message, 'tool_calls', None)):
-                            # Join buffered messages and send
-                            combined_message = " ".join(message_buffer)
-
-                            # Save the AI response
-                            ai_message = await self.db_ops.save_message(
-                                conversation=conversation,
-                                content_type='TE',
-                                is_from_user=False,
-                                in_reply_to=user_message
-                            )
-                            await self.db_ops.save_aitext(ai_message, combined_message)
-
-                            # Check for tool calls
-                            if getattr(message, 'tool_calls', None):
-                                await self.send(text_data=json.dumps({
-                                    'type': 'confirmation_required',
-                                    'action': combined_message,
-                                    'tool_calls': [
-                                        {"name": tc["name"],
-                                            "args": tc["args"]}
-                                        for tc in message.tool_calls
-                                    ]
-                                }))
-                            else:
-                                # Send regular response
-                                await self.send(text_data=json.dumps({
-                                    'type': 'agent_response',
-                                    'message': combined_message
-                                }))
-
-                            # Reset buffer and update time
-                            message_buffer = []
-                            last_sent_time = current_time
-
-                    elif isinstance(message, ToolMessage):
-                        logger.info(f"Tool Message received: {message}\n")
-                        # Send tool message to client if needed
-                        await self.send(text_data=json.dumps({
-                            'type': 'tool_response',
-                            'message': message.content
-                        }))
-                    else:
-                        logger.warning(
-                            f"Unknown message type: {type(message)}")
+                await self.process_graph_event(event, conversation, None)
 
         except Exception as e:
             logger.error(f"Error in handle_intent: {str(e)}")
@@ -236,13 +185,90 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
                 'message': f"Error processing intent: {str(e)}"
             }))
 
+    async def process_graph_event(self, event, conversation, user_message):
+        try:
+            messages = []
+            if isinstance(event, dict):
+                logger.debug(f"Processing event dict: {event}")
+                if "messages" in event:
+                    messages = event["messages"]
+                elif "agent" in event and "messages" in event["agent"]:
+                    messages = event["agent"]["messages"]
+
+                if not messages:
+                    return
+
+                for message in messages:
+                    if not message:
+                        continue
+
+                    logger.info(f"Processing message type: {type(message)}")
+                    logger.debug(f"Message content: {message}")
+
+                    if isinstance(message, AIMessage):
+                        content = message.content
+                        logger.info(f"AI Message content: {content}")
+
+                        # Log tool calls if present
+                        if hasattr(message, 'additional_kwargs') and 'tool_calls' in message.additional_kwargs:
+                            tool_calls = message.additional_kwargs['tool_calls']
+                            logger.info(f"Tool calls found: {tool_calls}")
+
+                            # Process each tool call
+                            for tool_call in tool_calls:
+                                if isinstance(tool_call, dict) and 'function' in tool_call:
+                                    tool_name = tool_call['function']['name']
+                                    logger.info(
+                                        f"Processing tool: {tool_name}")
+
+                                    if self.tool_manager.is_sensitive_tool(tool_name):
+                                        self.awaiting_confirmation = True
+                                        self.pending_tool_calls = tool_calls
+                                        logger.info(
+                                            f"Sending confirmation for sensitive tool: {tool_name}")
+                                        await self.send(text_data=json.dumps({
+                                            'type': 'confirmation_required',
+                                            'action': content or f"Confirm {tool_name} operation?",
+                                            'tool_calls': tool_calls
+                                        }))
+                                        return
+
+                        # Save the AI response
+                        ai_message = await self.db_ops.save_message(
+                            conversation=conversation,
+                            content_type='TE',
+                            is_from_user=False,
+                            in_reply_to=user_message
+                        )
+                        await self.db_ops.save_aitext(ai_message, content)
+
+                        # Only save and send message if it has content
+                        await self.send(text_data=json.dumps({
+                            'type': 'agent_response',
+                            'message': content
+                        }))
+
+        except Exception as e:
+            logger.error(f"Error processing graph event: {str(e)}")
+            logger.error(traceback.format_exc())
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': f"Error processing response: {str(e)}"
+            }))
+
     async def handle_message(self, data):
         """Handle ongoing conversation"""
         try:
             conversation = await database_sync_to_async(Conversation.objects.get)(id=self.conversation_id)
-            conversation_messages = await self.db_ops.get_conversation_messages(conversation.id)
             user_input = data.get('message')
             order_id = data.get('order_id')
+
+            # Get existing conversation history first
+            conversation_history = await self.db_ops.get_conversation_history(self.conversation_id)
+
+            # Add new user message
+            self.current_messages = conversation_history + \
+                [HumanMessage(content=user_input)]
 
             # Get order details for context
             order_details = await self.db_ops.get_order_details(order_id)
@@ -258,62 +284,29 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
             )
             await self.db_ops.save_usertext(user_message, user_input)
 
-            # Use the existing intent from the conversation
-            current_intent = conversation.current_intent or "general_inquiry"
+            # Check if we're awaiting confirmation
+            if self.awaiting_confirmation and any(word in user_input.lower() for word in ['yes', 'confirm', 'proceed']):
+                if self.pending_tool_calls:
+                    await self.handle_confirmation({
+                        'approved': True,
+                        'tool_calls': self.pending_tool_calls,
+                        'uuid': self.conversation_id
+                    })
+                    return
 
             # Continue conversation with full context
             current_state = {
-                "messages": conversation_messages + [HumanMessage(content=user_input)],
+                "messages": self.current_messages,
                 "order_info": order_details,  # Add order info to state
-                "conversation_id": str(conversation.id),
-                "intent": current_intent
+                "conversation_id": self.conversation_id,
+                "intent": conversation.current_intent
             }
 
             logger.debug(f"Current state for processing: {current_state}")
 
             async for event in self.graph.astream(current_state, config=settings.GRAPH_CONFIG):
                 if event and ("messages" in event or "agent" in event):
-                    # Handle nested event structure
-                    messages = None
-                    if "messages" in event:
-                        messages = event["messages"]
-                    elif "agent" in event and "messages" in event["agent"]:
-                        messages = event["agent"]["messages"]
-
-                    if not messages:
-                        logger.warning(f"No messages found in event: {event}")
-                        continue
-
-                    message = messages[-1]
-                    logger.info(f"Processing message: {message}\n")
-
-                    # Save the AI response with proper tool calls handling
-                    ai_message = await self.db_ops.save_message(
-                        conversation=conversation,
-                        content_type='TE',
-                        is_from_user=False,
-                        in_reply_to=user_message
-                    )
-
-                    # Extract tool calls if they exist
-                    tool_calls = getattr(message, 'tool_calls', [])
-                    if tool_calls:
-                        await self.db_ops.save_aitext(ai_message, message.content, tool_calls)
-                        await self.send(text_data=json.dumps({
-                            'type': 'confirmation_required',
-                            'action': message.content,
-                            'tool_calls': [
-                                {"name": tc["name"], "args": tc["args"]}
-                                for tc in tool_calls
-                            ]
-                        }))
-                    else:
-                        await self.db_ops.save_aitext(ai_message, message.content)
-                        await self.send(text_data=json.dumps({
-                            'type': 'agent_response',
-                            'message': message.content
-                        }))
-
+                    await self.process_graph_event(event, conversation, user_message)
         except Exception as e:
             logger.error(f"Error processing message: {str(e)}")
             logger.error(traceback.format_exc())
@@ -335,7 +328,6 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
 
             # Get conversation and related data
             conversation = await database_sync_to_async(Conversation.objects.get)(id=conversation_id)
-            conversation_messages = await self.db_ops.get_conversation_messages(conversation.id)
 
             # Get the associated order from the tool calls
             order_id = None
@@ -373,6 +365,10 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
                     tool_calls=tool_calls
                 )
 
+                # Reset confirmation state
+                self.awaiting_confirmation = False
+                self.pending_tool_calls = None
+
                 # Send completion notification with updated card
                 await self.send(text_data=json.dumps({
                     'type': 'operation_complete',
@@ -403,6 +399,10 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
                 )
                 await self.db_ops.save_aitext(ai_message, decline_message.content)
 
+                # Reset confirmation state
+                self.awaiting_confirmation = False
+                self.pending_tool_calls = None
+
                 # Send decline notification
                 await self.send(text_data=json.dumps({
                     'type': 'agent_response',
@@ -428,19 +428,31 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
     async def execute_tool_action(self, tool_call, order_details):
         """Execute the approved tool action using the tool manager"""
         try:
-            print("*"*40)
-            print("order_details: ", order_details)
-            print("*"*40)
-            tool_name = tool_call.get('name')
-            tool_args = json.loads(tool_call.get('args')) if isinstance(
-                tool_call.get('args'), str) else tool_call.get('args')
+            # Extract tool info from the function field
+            if not tool_call or not isinstance(tool_call, dict):
+                raise ValueError("Invalid tool call format")
 
-            logger.info(
-                f"Executing tool: {tool_name} with args: {tool_args}\n")
+            # Get function details
+            function_info = tool_call.get('function', {})
+            tool_name = function_info.get('name')
+
+            if not tool_name:
+                logger.error(f"No tool name found in tool call: {tool_call}")
+                raise ValueError("Tool name not found in tool call")
+
+            # Parse arguments properly
+            try:
+                tool_args = json.loads(function_info.get('arguments', '{}')) if isinstance(
+                    function_info.get('arguments'), str) else function_info.get('arguments', {})
+            except json.JSONDecodeError as e:
+                logger.error(f"Error parsing tool arguments: {e}")
+                raise ValueError(f"Invalid tool arguments format: {e}")
+
+            logger.info(f"Executing tool: {tool_name} with args: {tool_args}")
 
             # Get the tool from tool manager
-            tools = self.create_tools()
-            tool = next((t for t in tools if t.name == tool_name), None)
+            all_tools = self.tool_manager.get_all_tools()
+            tool = next((t for t in all_tools if t.name == tool_name), None)
 
             if not tool:
                 raise ValueError(f"Unknown tool: {tool_name}")
@@ -448,38 +460,19 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
             # Construct input dictionary for each tool
             tool_input = {}
 
-            if tool_name == 'get_order_details':
+            if tool_name == 'modify_order_quantity':
                 tool_input = {
-                    'order_id': str(order_details['order_id']),
-                    # Use actual user ID instead of 'self'
-                    'customer_id': str(self.user.id)
-                }
-
-            elif tool_name == 'modify_order_quantity':
-                tool_input = {
-                    'order_id': str(order_details['order_id']),
-                    'customer_id': str(self.user.id),
-                    'product_id': tool_args.get('product_id'),
-                    'new_quantity': tool_args.get('new_quantity')
+                    'order_id': str(tool_args.get('order_id')),
+                    'customer_id': str(tool_args.get('customer_id')),
+                    'product_id': int(tool_args.get('product_id')),
+                    'new_quantity': int(tool_args.get('new_quantity'))
                 }
 
             elif tool_name == 'cancel_order':
                 tool_input = {
-                    'order_id': str(order_details['order_id']),
-                    'customer_id': str(self.user.id),
+                    'order_id': str(tool_args.get('order_id')),
+                    'customer_id': str(tool_args.get('customer_id')),
                     'reason': tool_args.get('reason', 'User requested cancellation')
-                }
-
-            elif tool_name == 'track_order':
-                tool_input = {
-                    'order_id': str(order_details['order_id']),
-                    'customer_id': str(self.user.id)
-                }
-
-            elif tool_name == 'get_support_info':
-                tool_input = {
-                    'order_id': str(order_details['order_id']),
-                    'customer_id': str(self.user.id)
                 }
 
             else:
@@ -487,7 +480,7 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
 
             logger.info(f"Prepared tool input: {tool_input}")
             result = await tool.ainvoke(tool_input)
-            logger.info(f"Tool execution result: {result}\n")
+            logger.info(f"Tool execution result: {result}")
             return result
 
         except Exception as e:
