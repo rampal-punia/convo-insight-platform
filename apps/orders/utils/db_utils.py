@@ -112,14 +112,41 @@ class DatabaseOperations:
             return {"error": "Order not found"}
 
     @database_sync_to_async
+    def validate_order_status_for_modification(self, order_id: str) -> tuple[bool, str]:
+        """
+        Validate if an order can be modified based on its status.
+        Returns a tuple of (is_valid, message).
+        """
+        try:
+            order = Order.objects.get(id=order_id, user=self.user)
+            # Define valid statuses for modification
+            MODIFIABLE_STATUSES = [
+                Order.Status.PENDING, Order.Status.PROCESSESING]
+            if order.status not in MODIFIABLE_STATUSES:
+                status_display = order.get_status_display()
+                return False, f"Cannot modify order in {status_display} status. Only pending or processing orders can be modified."
+
+            return True, "Order is eligible for modification"
+
+        except Order.DoesNotExist:
+            return False, "Order not found or access denied"
+        except Exception as e:
+            logger.error(f"Error validating order status: {str(e)}")
+            logger.error(traceback.format_exc())
+            return False, f"Error validating order status: {str(e)}"
+
+    @database_sync_to_async
     def update_order(self, order_id, update_data):
         try:
+            # First validate order status
+            can_modify, message = self.validate_order_status_for_modification(
+                order_id)
+            if not can_modify:
+                raise ValueError(message)
+
             with transaction.atomic():
                 # Lock the order and related records
                 order = Order.objects.select_for_update().get(id=order_id)
-                # Validate order status
-                if order.status not in ['PE', 'PR']:
-                    return "Cannot modify order - it has already been shipped or delivered."
 
                 # Validate user permissions
                 if order.user != self.user:
