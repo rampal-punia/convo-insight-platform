@@ -88,7 +88,7 @@ class ToolRegistry:
         self.tools: Dict[str, BaseTool] = {}
         self.metadata: Dict[str, ToolMetadata] = {}
         self.tool_categories = {
-            'query': ['get_order_details'],  # Information retrieval tools
+            'query': ['get_order_info'],  # Information retrieval tools
             # Order modification tools
             'modification': ['modify_order_quantity'],
             'status': ['track_order'],  # Status check tools
@@ -155,7 +155,7 @@ class ToolManager:
         )
 
         self.registry.register(
-            self._create_get_support_info_tool(),
+            self._create_get_order_info_tool(),
             ToolMetadata(
                 category=ToolCategory.SAFE,
                 description="Get support information",
@@ -197,7 +197,7 @@ class ToolManager:
                     f"Status: {order_details['status']}\n"
                     f"Items:\n" +
                     "\n".join([
-                        f"- {item['quantity']}x {item['name']}"
+                        f"- {item['quantity']}x {item['product']}"
                         for item in order_details['items']
                     ])
                 )
@@ -217,8 +217,14 @@ class ToolManager:
             new_quantity: int
         ) -> str:
             """Modify the quantity of a product in an order"""
-            logger.info(f"Modifying order quantity: {new_quantity}")
+            # First validate order status
             try:
+                can_modify, message = await self.db_ops.validate_order_status_for_modification(order_id)
+                if not can_modify:
+                    logger.warning(f"Order modification rejected: {message}")
+                    return message
+
+                logger.info(f"Modifying order quantity: {new_quantity}")
                 result = await self.db_ops.update_order(
                     order_id,
                     {
@@ -254,10 +260,10 @@ class ToolManager:
                 return "Failed to cancel order"
         return cancel_order
 
-    def _create_get_support_info_tool(self):
+    def _create_get_order_info_tool(self):
         """Create the get support info tool"""
         @tool(args_schema=GetSupportInfo)
-        async def get_support_info(order_id: str, customer_id: str) -> str:
+        async def get_order_info(order_id: str, customer_id: str) -> str:
             """Get support information and available actions"""
             try:
                 order_details = await self.db_ops.get_order_details(order_id)
@@ -282,7 +288,7 @@ class ToolManager:
                 logger.error(f"Error getting support info: {str(e)}")
                 logger.error(traceback.format_exc())
                 return "Failed to get support information"
-        return get_support_info
+        return get_order_info
 
     def get_safe_tools(self) -> List[BaseTool]:
         """Get all safe tools"""
