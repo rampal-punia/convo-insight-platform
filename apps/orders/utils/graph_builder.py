@@ -66,6 +66,37 @@ class GraphBuilder:
             if isinstance(latest_msg, AIMessage):
                 return {"messages": []}
 
+            # For modify_order intent, check order status immediately
+            if (state.get("intent") == "modify_order" and
+                isinstance(latest_msg, HumanMessage) and
+                "help" in latest_msg.content.lower() and
+                    "modif" in latest_msg.content.lower()):
+
+                order_status = state["order_info"]["status"]
+                if order_status not in ["Pending", "Processing"]:
+                    status_message = f"""I notice that your order is currently in '{order_status}' status. 
+                    Unfortunately, orders can only be modified while they are in 'Pending' or 'Processing' status.
+                    
+                    Here's what you can do with your order in its current status:
+                    """
+
+                    status_actions = {
+                        'Shipped': "- Track your shipment\n- Contact support for delivery updates",
+                        'Delivered': "- Initiate a return (if within 30 days)\n- Leave a review",
+                        'Cancelled': "- Place a new order\n- View similar products",
+                        'Returned': "- Check refund status\n- Place a new order",
+                        'In Transit': "- Track your shipment\n- Update delivery preferences"
+                    }
+
+                    status_message += "\n" + \
+                        status_actions.get(
+                            order_status, "- Contact customer support for assistance")
+
+                    return {
+                        "messages": [AIMessage(content=status_message)],
+                        "completed": True
+                    }
+
             # Format conversation history and get latest input
             history = self._format_conversation_history(state["messages"][:-1])
             user_input = latest_msg.content if isinstance(
