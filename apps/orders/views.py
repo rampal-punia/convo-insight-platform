@@ -54,6 +54,12 @@ class OrderCreateView(LoginRequiredMixin, CreateView):
             self.object = form.save()
             if order_items.is_valid():
                 order_items.instance = self.object
+                for form in order_items.forms:
+                    if form.is_valid() and not form.cleaned_data.get('DELETE', False):
+                        order_item = form.instance
+                        order_item.price = order_item.product.price
+
+                # Now save the formset with prices
                 order_items.save()
             else:
                 raise ValidationError("Order items are invalid.")
