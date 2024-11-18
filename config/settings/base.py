@@ -8,11 +8,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 # Add the 'apps' directory to the Python path
 sys.path.insert(0, str(BASE_DIR / 'apps'))
 
-ALLOWED_HOSTS = [
-    "127.0.0.1",
-    "0.0.0.0",
-    "localhost",
-]
+# ALLOWED_HOSTS = [
+#     "127.0.0.1",
+#     "0.0.0.0",
+#     "localhost",
+# ]
 
 DJANGO_APPS = [
     'daphne',
@@ -100,6 +100,11 @@ TEMPLATES = [
     },
 ]
 
+STATICFILES_FINDERS = [
+    'django.contrib.staticfiles.finders.FileSystemFinder',
+    'django.contrib.staticfiles.finders.AppDirectoriesFinder',
+]
+
 WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
 
@@ -137,7 +142,11 @@ AUTH_PASSWORD_VALIDATORS = [
 
 GPT_MINI = 'gpt-4o-mini'
 REQUEST_GPT_TIMEOUT = 30
-GRAPH_CONFIG = {"recursion_limit": 30}
+GRAPH_CONFIG = {
+    "recursion_limit": 5,
+    "max_retries": 3,
+    "error_policy": "stop"  # or "continue" based on requirements
+}
 
 # Internationalization
 # https://docs.djangoproject.com/en/{{ docs_version }}/topics/i18n/
@@ -212,14 +221,38 @@ CELERY_TASK_TIME_LIMIT = 30 * 60
 
 FINE_TUNED_MODEL_DIR = '/media/llms/'
 
+# Modify CHANNEL_LAYERS in base.py
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
             "hosts": [("localhost", 6379)],
+            "capacity": 1500,  # Defaults to 100
+            "expiry": 10,  # Message expiry in seconds
         },
     },
 }
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': 'redis://127.0.0.1:6379/1',
+        'OPTIONS': {
+            'db': '1',
+            # 'parser_class': 'redis.connection.PythonParser',
+            'pool_class': 'redis.connection.ConnectionPool',
+            'socket_timeout': 5,
+            'socket_connect_timeout': 5,
+            'retry_on_timeout': True,
+            'max_connections': 100,
+        }
+    }
+}
+
+# For session cache
+SESSION_ENGINE = 'django.contrib.sessions.backends.cached_db'
+SESSION_CACHE_ALIAS = 'default'
+
 
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
