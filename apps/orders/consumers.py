@@ -13,7 +13,9 @@ from .utils.tool_manager import create_tool_manager
 from .utils.db_utils import DatabaseOperations
 from .utils.graph_builder import GraphBuilder, GraphConfig
 
-logger = logging.getLogger('orders')  # Get the orders logger
+logger = logging.getLogger('orders')
+logger.error("An error occurred", exc_info=True)
+logger.debug("Debug message")
 
 
 class OrderSupportConsumer(AsyncWebsocketConsumer):
@@ -103,12 +105,17 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
         try:
             intent = data.get('intent')
             order_id = data.get('order_id')
+            logger.info(f"Processing intent: {intent} for order: {order_id}")
             conversation_id = data.get('uuid')
 
             # Reset message history for new intent
             self.current_messages = []
 
-            logger.info(f"Processing intent: {intent} for order: {order_id}")
+            logger.debug(f"Full intent data: {data}")
+
+            # Check if intent requires sensitive tools
+            is_sensitive = self.tool_manager.is_sensitive_tool(intent)
+            logger.debug(f"Intent sensitivity check: {is_sensitive}")
 
             # Get conversation and order details
             conversation, order = await self.db_ops.get_or_create_conversation(
@@ -129,12 +136,21 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
             # Get order details
             order_details = await self.db_ops.get_order_details(order_id)
 
+            # Add status check logging
+            order_details = await self.db_ops.get_order_details(order_id)
+            logger.debug(f"Order status: {order_details['status']}")
+
             # For modify_order intent, check status immediately
-            if intent == 'modify_order':
+            if intent == 'modify_order_quantity':
                 can_modify = order_details['status'] in [
                     'Pending', 'Processing']
+                logger.info(
+                    f"Can modify order: {can_modify}, Message: {data}")
                 if not can_modify:
-                    await self.send_status_message(order_details)
+                    await self.send(text_data=json.dumps({
+                        'type': 'error',
+                        'message': f"Cannot modify order in {order_details['status']} status. Only pending or processing orders can be modified."
+                    }))
                     return
 
             # Initialize graph with tool manager
@@ -439,8 +455,13 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
             can_modify, message = await self.db_ops.validate_order_status_for_modification(
                 tool_args.get('order_id')
             )
+            logger.debug(f"Can modify order: {can_modify}")
             if not can_modify:
-                raise ValueError(message)
+                await self.send(text_data=json.dumps({
+                    'type': 'error',
+                    'message': f"Cannot modify order. Only pending or processing orders can be modified."
+                }))
+                return
 
             return {
                 'order_id': str(tool_args.get('order_id')),
