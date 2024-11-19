@@ -43,6 +43,39 @@ class BaseOrderSchema(BaseModel):
     customer_id: str = Field(description="The ID of the customer")
 
 
+class TrackingRequest(BaseModel):
+    """Base schema for tracking-related tools"""
+    order_id: str = Field(description="The ID of the order to track")
+    customer_id: str = Field(
+        description="The ID of the customer making the request")
+
+
+class TrackingDetailRequest(TrackingRequest):
+    """Schema for detailed tracking information"""
+    include_history: bool = Field(
+        default=False,
+        description="Whether to include full tracking history"
+    )
+
+
+class ShipmentLocationRequest(TrackingRequest):
+    """Schema for current shipment location"""
+    pass
+
+
+class DeliveryEstimateRequest(TrackingRequest):
+    """Schema for delivery estimate information"""
+    pass
+
+
+class TrackingUpdateRequest(TrackingRequest):
+    """Schema for tracking updates subscription"""
+    notify: bool = Field(
+        default=True,
+        description="Whether to enable tracking notifications"
+    )
+
+
 class ModifyOrderQuantity(BaseOrderSchema):
     '''Tools to modify the quantity of items in an order.'''
     product_id: int = Field(description="The ID of the product to modify")
@@ -88,24 +121,19 @@ class ToolRegistry:
         self.tools: Dict[str, BaseTool] = {}
         self.metadata: Dict[str, ToolMetadata] = {}
         self.tool_categories = {
-            'query': ['get_order_info'],  # Information retrieval tools
-            # Order modification tools
+            'query': ['get_order_info', 'track_order', 'get_shipment_location'],
+            'tracking': ['get_tracking_details', 'get_delivery_estimate'],
+            'status': ['track_order', 'get_order_info'],
             'modification': ['modify_order_quantity'],
-            'status': ['track_order'],  # Status check tools
-            'cancellation': ['cancel_order']  # Cancellation tools
+            'cancellation': ['cancel_order']
         }
 
     def register(self, tool: BaseTool, metadata: ToolMetadata):
         """Register a tool with its metadata"""
         # Prevent registration of redundant tools
-        for category, tools in self.tool_categories.items():
-            if tool.name in tools:
-                existing_tool = next(
-                    (t for t in self.tools.values() if t.name in tools), None)
-                if existing_tool:
-                    logger.warning(
-                        f"Tool {tool.name} conflicts with existing tool {existing_tool.name} in category {category}")
-                    return
+        if tool.name in self.tools:
+            logger.warning(f"Tool {tool.name} is already registered")
+            return
 
         self.tools[tool.name] = tool
         self.metadata[tool.name] = metadata
@@ -154,6 +182,34 @@ class ToolManager:
             )
         )
 
+        # Register tracking-specific tools
+        self.registry.register(
+            self._create_tracking_details_tool(),
+            ToolMetadata(
+                category=ToolCategory.SAFE,
+                description="Get detailed tracking information",
+                requires_confirmation=False
+            )
+        )
+
+        self.registry.register(
+            self._create_shipment_location_tool(),
+            ToolMetadata(
+                category=ToolCategory.SAFE,
+                description="Get current shipment location",
+                requires_confirmation=False
+            )
+        )
+
+        self.registry.register(
+            self._create_delivery_estimate_tool(),
+            ToolMetadata(
+                category=ToolCategory.SAFE,
+                description="Get estimated delivery date and time",
+                requires_confirmation=False
+            )
+        )
+
         self.registry.register(
             self._create_get_order_info_tool(),
             ToolMetadata(
@@ -183,29 +239,110 @@ class ToolManager:
         )
 
     def _create_track_order_tool(self):
-        """Create the track order tool"""
-        @tool(args_schema=TrackOrder)
+        """Create the main tracking tool"""
+        @tool(args_schema=TrackingRequest)
         async def track_order(order_id: str, customer_id: str) -> str:
-            """Get tracking information for an order"""
+            """Get comprehensive tracking information for an order"""
             try:
+                # Get basic order details
                 order_details = await self.db_ops.get_order_details(order_id)
                 if 'error' in order_details:
                     return "Order not found"
 
-                return (
+                # Get tracking details
+                tracking_info = await self.db_ops.get_tracking_info(order_id)
+
+                # Format response
+                response = (
                     f"Order #{order_details['order_id']}\n"
                     f"Status: {order_details['status']}\n"
-                    f"Items:\n" +
-                    "\n".join([
-                        f"- {item['quantity']}x {item['product']}"
-                        for item in order_details['items']
-                    ])
+                    f"Tracking Number: {tracking_info['tracking_number']}\n"
+                    f"Carrier: {tracking_info['carrier']}\n"
+                    f"Last Location: {tracking_info['current_location']}\n"
+                    f"Estimated Delivery: {tracking_info['estimated_delivery']}\n\n"
+                    f"Latest Update: {tracking_info['latest_update']}"
                 )
+
+                return response
             except Exception as e:
                 logger.error(f"Error tracking order: {str(e)}")
-                logger.error(traceback.format_exc())
-                return "Failed to get tracking information"
+                return "Failed to retrieve tracking information"
         return track_order
+
+    def _create_tracking_details_tool(self):
+        """Create tool for detailed tracking information"""
+        @tool(args_schema=TrackingDetailRequest)
+        async def get_tracking_details(
+            order_id: str,
+            customer_id: str,
+            include_history: bool = False
+        ) -> str:
+            """Get detailed tracking information with optional history"""
+            try:
+                tracking_info = await self.db_ops.get_tracking_info(order_id)
+
+                if include_history:
+                    history = await self.db_ops.get_tracking_history(order_id)
+                    tracking_info['history'] = history
+
+                return self._format_tracking_details(tracking_info)
+            except Exception as e:
+                logger.error(f"Error getting tracking details: {str(e)}")
+                return "Failed to retrieve tracking details"
+        return get_tracking_details
+
+    def _create_shipment_location_tool(self):
+        """Create tool for current shipment location"""
+        @tool(args_schema=ShipmentLocationRequest)
+        async def get_shipment_location(order_id: str, customer_id: str) -> str:
+            """Get current location and status of the shipment"""
+            try:
+                location_info = await self.db_ops.get_current_location(order_id)
+                return (
+                    f"Current Location: {location_info['location']}\n"
+                    f"Status: {location_info['status']}\n"
+                    f"Last Updated: {location_info['timestamp']}"
+                )
+            except Exception as e:
+                logger.error(f"Error getting shipment location: {str(e)}")
+                return "Failed to retrieve shipment location"
+        return get_shipment_location
+
+    def _create_delivery_estimate_tool(self):
+        """Create tool for delivery estimates"""
+        @tool(args_schema=DeliveryEstimateRequest)
+        async def get_delivery_estimate(order_id: str, customer_id: str) -> str:
+            """Get estimated delivery date and time window"""
+            try:
+                estimate = await self.db_ops.get_delivery_estimate(order_id)
+                return (
+                    f"Estimated Delivery: {estimate['date']}\n"
+                    f"Time Window: {estimate['time_window']}\n"
+                    f"Confidence: {estimate['confidence']}"
+                )
+            except Exception as e:
+                logger.error(f"Error getting delivery estimate: {str(e)}")
+                return "Failed to retrieve delivery estimate"
+        return get_delivery_estimate
+
+    def _format_tracking_details(self, tracking_info: Dict) -> str:
+        """Format tracking information into a readable string"""
+        details = (
+            f"Tracking Details for Order #{tracking_info['order_id']}\n"
+            f"Status: {tracking_info['status']}\n"
+            f"Carrier: {tracking_info['carrier']}\n"
+            f"Tracking Number: {tracking_info['tracking_number']}\n\n"
+            f"Current Location: {tracking_info['current_location']}\n"
+            f"Last Updated: {tracking_info['last_update']}\n"
+            f"Estimated Delivery: {tracking_info['estimated_delivery']}\n"
+        )
+
+        if 'history' in tracking_info:
+            details += "\nTracking History:\n"
+            for event in tracking_info['history']:
+                details += f"- {event['timestamp']}: {event['status']} - {event['location']}\n"
+
+        return details
 
     def _create_modify_order_tool(self):
         """Create the modify order tool"""
