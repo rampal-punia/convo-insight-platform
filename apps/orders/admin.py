@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Order, OrderItem
+from .models import Order, OrderItem, OrderTracking
 
 
 @admin.register(Order)
@@ -12,3 +12,9 @@ class OrderAdmin(admin.ModelAdmin):
 class OrderItemAdmin(admin.ModelAdmin):
     list_display = ('id', 'order', 'product', 'quantity')
     list_display_links = ('id', 'order', 'product')
+
+
+@admin.register(OrderTracking)
+class OrderTrackingAdmin(admin.ModelAdmin):
+    list_display = ('id', 'order', 'status')
+    list_display_links = ('id', 'order')
