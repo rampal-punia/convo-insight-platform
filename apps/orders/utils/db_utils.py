@@ -1,12 +1,10 @@
 from channels.db import database_sync_to_async
 import traceback
 from django.utils import timezone
-from datetime import timedelta
-from decimal import Decimal
 from typing import Dict, List, Optional
 from django.db import transaction
 from convochat.models import Conversation, Message, UserText, AIText
-from langchain_core.messages import AIMessage, ToolMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 from ..models import (
     Order,
@@ -380,8 +378,7 @@ class DatabaseOperations:
         try:
             order = Order.objects.get(id=order_id, user=self.user)
             # Define valid statuses for modification
-            MODIFIABLE_STATUSES = [
-                Order.Status.PENDING, Order.Status.PROCESSESING]
+            MODIFIABLE_STATUSES = ['PE', 'PR']
             if order.status not in MODIFIABLE_STATUSES:
                 status_display = order.get_status_display()
                 return False, f"Cannot modify order in {status_display} status. Only pending or processing orders can be modified."
@@ -395,34 +392,41 @@ class DatabaseOperations:
             logger.error(traceback.format_exc())
             return False, f"Error validating order status: {str(e)}"
 
-    @database_sync_to_async
-    def update_order(self, order_id, update_data):
+    async def update_order(self, order_id, update_data):
         try:
             # First validate order status
-            can_modify, message = self.validate_order_status_for_modification(
-                order_id)
+            validation_result = await self.validate_order_status_for_modification(order_id)
+            can_modify, message = validation_result
             if not can_modify:
                 raise ValueError(message)
 
-            with transaction.atomic():
-                # Lock the order and related records
-                order = Order.objects.select_for_update().get(id=order_id)
+            # Proceed with update using database_sync_to_async
+            @database_sync_to_async
+            def perform_update():
+                with transaction.atomic():
+                    # Lock the order and related records
+                    order = Order.objects.select_for_update().get(id=order_id)
 
-                # Validate user permissions
-                if order.user != self.user:
-                    raise PermissionError(
-                        "Not authorized to modify this order")
+                    # Validate user permissions
+                    if order.user != self.user:
+                        raise PermissionError(
+                            "Not authorized to modify this order")
 
-                action = update_data.get('action')
+                    action = update_data.get('action')
 
-                if action == 'modify_quantity':
-                    return self._handle_quantity_modification(order, update_data)
-                elif action == 'cancel_item':
-                    return self._handle_item_cancellation(order, update_data)
-                elif action == 'cancel_order':
-                    return self._handle_order_cancellation(order)
-                else:
-                    raise ValueError(f"Unknown action: {action}")
+                    if action == 'modify_quantity':
+                        return self._handle_quantity_modification(order, update_data)
+                    elif action == 'cancel_item':
+                        return self._handle_item_cancellation(order, update_data)
+                    elif action == 'cancel_order':
+                        return self._handle_order_cancellation(order)
+                    else:
+                        raise ValueError(f"Unknown action: {action}")
+
+            # Execute the update
+            result = await perform_update()
+            return result
+
         except (Order.DoesNotExist, OrderItem.DoesNotExist):
             raise ValueError("Order or item not found")
         except Exception as e:
@@ -576,3 +580,8 @@ class DatabaseOperations:
             </div>
         </div>
         """
+
+    @database_sync_to_async
+    def save_conversation_title(conversation, title):
+        conversation.title = title
+        conversation.save()
