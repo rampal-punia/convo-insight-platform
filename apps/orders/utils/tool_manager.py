@@ -1,8 +1,8 @@
-import logging
-from enum import Enum
-from dataclasses import dataclass
-import traceback
 from typing import Annotated, TypedDict, List, Dict, Optional
+from dataclasses import dataclass
+import logging
+import traceback
+from enum import Enum
 from langgraph.graph.message import add_messages, AnyMessage
 from langchain_core.tools import tool, BaseTool
 from pydantic import BaseModel, Field
@@ -169,6 +169,9 @@ class ToolManager:
         self.db_ops = db_ops
         self.registry = ToolRegistry()
         self._register_tools()
+        self.tool_call_depth = 0  # Add this line
+        self.MAX_TOOL_DEPTH = 3   # Add this line
+        self.current_tool_chain = []  # Add this line
 
     def _register_tools(self):
         """Register all tools with their metadata"""
@@ -244,26 +247,37 @@ class ToolManager:
         async def track_order(order_id: str, customer_id: str) -> str:
             """Get comprehensive tracking information for an order"""
             try:
-                # Get basic order details
-                order_details = await self.db_ops.get_order_details(order_id)
-                if 'error' in order_details:
-                    return "Order not found"
+                # Check recursion depth
+                if self.tool_call_depth >= self.MAX_TOOL_DEPTH:
+                    return "Unable to process request due to too many nested tool calls"
 
-                # Get tracking details
-                tracking_info = await self.db_ops.get_tracking_info(order_id)
+                self.tool_call_depth += 1
+                self.current_tool_chain.append('track_order')
 
-                # Format response
-                response = (
-                    f"Order #{order_details['order_id']}\n"
-                    f"Status: {order_details['status']}\n"
-                    f"Tracking Number: {tracking_info['tracking_number']}\n"
-                    f"Carrier: {tracking_info['carrier']}\n"
-                    f"Last Location: {tracking_info['current_location']}\n"
-                    f"Estimated Delivery: {tracking_info['estimated_delivery']}\n\n"
-                    f"Latest Update: {tracking_info['latest_update']}"
-                )
+                try:
+                    # Get all required information in one go
+                    order_details = await self.db_ops.get_order_details(order_id)
+                    if 'error' in order_details:
+                        return "Order not found"
 
-                return response
+                    tracking_info = await self.db_ops.get_tracking_info(order_id)
+
+                    # Format response
+                    response = (
+                        f"Order #{order_details['order_id']}\n"
+                        f"Status: {order_details['status']}\n"
+                        f"Tracking Number: {tracking_info['tracking_number']}\n"
+                        f"Carrier: {tracking_info['carrier']}\n"
+                        f"Last Location: {tracking_info['current_location']}\n"
+                        f"Estimated Delivery: {tracking_info['estimated_delivery']}\n\n"
+                        f"Latest Update: {tracking_info['latest_update']}"
+                    )
+
+                    return response
+                finally:
+                    self.tool_call_depth -= 1
+                    self.current_tool_chain.pop()
+
             except Exception as e:
                 logger.error(f"Error tracking order: {str(e)}")
                 return "Failed to retrieve tracking information"
@@ -278,6 +292,17 @@ class ToolManager:
             include_history: bool = False
         ) -> str:
             """Get detailed tracking information with optional history"""
+            # Check recursion depth
+            if self.tool_call_depth >= self.MAX_TOOL_DEPTH:
+                return "Unable to process request due to too many nested tool calls"
+
+            # Check if this tool is already in the chain
+            if 'get_tracking_details' in self.current_tool_chain:
+                return "Already processing tracking details"
+
+            self.tool_call_depth += 1
+            self.current_tool_chain.append('get_tracking_details')
+
             try:
                 tracking_info = await self.db_ops.get_tracking_info(order_id)
 
@@ -286,9 +311,9 @@ class ToolManager:
                     tracking_info['history'] = history
 
                 return self._format_tracking_details(tracking_info)
-            except Exception as e:
-                logger.error(f"Error getting tracking details: {str(e)}")
-                return "Failed to retrieve tracking details"
+            finally:
+                self.tool_call_depth -= 1
+                self.current_tool_chain.pop()
         return get_tracking_details
 
     def _create_shipment_location_tool(self):
@@ -296,6 +321,15 @@ class ToolManager:
         @tool(args_schema=ShipmentLocationRequest)
         async def get_shipment_location(order_id: str, customer_id: str) -> str:
             """Get current location and status of the shipment"""
+            if self.tool_call_depth >= self.MAX_TOOL_DEPTH:
+                return "Unable to process request due to too many nested tool calls"
+
+            if 'get_shipment_location' in self.current_tool_chain:
+                return "Already processing location information"
+
+            self.tool_call_depth += 1
+            self.current_tool_chain.append('get_shipment_location')
+
             try:
                 location_info = await self.db_ops.get_current_location(order_id)
                 return (
@@ -303,9 +337,9 @@ class ToolManager:
                     f"Status: {location_info['status']}\n"
                     f"Last Updated: {location_info['timestamp']}"
                 )
-            except Exception as e:
-                logger.error(f"Error getting shipment location: {str(e)}")
-                return "Failed to retrieve shipment location"
+            finally:
+                self.tool_call_depth -= 1
+                self.current_tool_chain.pop()
         return get_shipment_location
 
     def _create_delivery_estimate_tool(self):
@@ -313,6 +347,15 @@ class ToolManager:
         @tool(args_schema=DeliveryEstimateRequest)
         async def get_delivery_estimate(order_id: str, customer_id: str) -> str:
             """Get estimated delivery date and time window"""
+            if self.tool_call_depth >= self.MAX_TOOL_DEPTH:
+                return "Unable to process request due to too many nested tool calls"
+
+            if 'get_delivery_estimate' in self.current_tool_chain:
+                return "Already processing delivery estimate"
+
+            self.tool_call_depth += 1
+            self.current_tool_chain.append('get_delivery_estimate')
+
             try:
                 estimate = await self.db_ops.get_delivery_estimate(order_id)
                 return (
@@ -320,10 +363,27 @@ class ToolManager:
                     f"Time Window: {estimate['time_window']}\n"
                     f"Confidence: {estimate['confidence']}"
                 )
-            except Exception as e:
-                logger.error(f"Error getting delivery estimate: {str(e)}")
-                return "Failed to retrieve delivery estimate"
+            finally:
+                self.tool_call_depth -= 1
+                self.current_tool_chain.pop()
         return get_delivery_estimate
+
+    def is_sensitive_tool(self, tool_name: str) -> bool:
+        """Check if a tool is sensitive"""
+        if not tool_name:
+            logger.warning("Received empty tool name for sensitivity check")
+            return False
+
+        # Check tool chain depth
+        if self.tool_call_depth >= self.MAX_TOOL_DEPTH:
+            logger.warning(f"Tool chain depth exceeded for {tool_name}")
+            return True  # Treat as sensitive to prevent further calls
+
+        metadata = self.registry.get_tool_metadata(tool_name)
+        is_sensitive = (metadata is not None and
+                        metadata.category == ToolCategory.SENSITIVE)
+        logger.info(f"Tool {tool_name} is_sensitive: {is_sensitive}")
+        return is_sensitive
 
     def _format_tracking_details(self, tracking_info: Dict) -> str:
         """Format tracking information into a readable string"""
@@ -438,10 +498,6 @@ class ToolManager:
     def get_all_tools(self) -> List[BaseTool]:
         """Get all tools"""
         return list(self.registry.tools.values())
-
-    def is_sensitive_tool(self, tool_name: str) -> bool:
-        """Check if a tool is sensitive"""
-        return self.registry.is_sensitive_tool(tool_name)
 
 
 def create_tool_manager(db_ops) -> ToolManager:
