@@ -88,7 +88,7 @@ class PromptManager:
                 ("human", "{user_input}"),
             ]),
 
-            'modify_order': ChatPromptTemplate.from_messages([
+            'modify_order_quantity': ChatPromptTemplate.from_messages([
                 ("system", """You are a customer support assistant for order modifications. 
                 IMPORTANT: Before proceeding with any modification requests, first check the order status.
                 Orders can ONLY be modified if they are in 'Pending' or 'Processing' status.

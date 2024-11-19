@@ -65,7 +65,7 @@ class GraphBuilder:
                 return {"messages": []}
 
             # For modify_order intent, check order status immediately
-            if (state.get("intent") == "modify_order" and
+            if (state.get("intent") == "modify_order_quantity" and
                 isinstance(latest_msg, HumanMessage) and
                 "help" in latest_msg.content.lower() and
                     "modif" in latest_msg.content.lower()):
@@ -275,6 +275,7 @@ class GraphBuilder:
     def build(self) -> StateGraph:
         """Builds and returns the configured StateGraph with separate tool handling"""
         logger.info(f"Building graph for intent: {self.config.intent}")
+        logger.debug(f"Graph config: {self.config}")
 
         workflow = StateGraph(tm.OrderState)
 
