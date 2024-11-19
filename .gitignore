@@ -173,7 +173,7 @@ cython_debug/
 # Ignore static folders anywhere in the repository
 **/static/
 static/*
-
+/staticfiles/
 templates/*
 **/templates
 
