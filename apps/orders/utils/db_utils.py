@@ -1,10 +1,19 @@
 from channels.db import database_sync_to_async
 import traceback
+from django.utils import timezone
+from datetime import timedelta
+from decimal import Decimal
+from typing import Dict, List, Optional
 from django.db import transaction
 from convochat.models import Conversation, Message, UserText, AIText
 from langchain_core.messages import AIMessage, ToolMessage, HumanMessage, SystemMessage
 
-from ..models import Order, OrderConversationLink, OrderItem
+from ..models import (
+    Order,
+    OrderConversationLink,
+    OrderItem,
+    OrderTracking
+)
 import logging
 logger = logging.getLogger('orders')  # Get the orders logger
 
@@ -14,7 +23,258 @@ class DatabaseOperations:
         self.user = user
 
     @database_sync_to_async
-    def get_conversation_history(self, conversation_id, limit=8):
+    def get_tracking_info(self, order_id: str) -> Dict:
+        """Get comprehensive tracking information for an order"""
+        try:
+            order = Order.objects.select_related('user').get(
+                id=order_id,
+                user=self.user
+            )
+
+            # Get latest tracking update
+            latest_tracking = order.tracking_history.order_by(
+                '-timestamp').first()
+
+            # Calculate estimated delivery window
+            if order.estimated_delivery:
+                delivery_window = self._calculate_delivery_window(
+                    order.shipping_method,
+                    order.estimated_delivery
+                )
+            else:
+                delivery_window = None
+
+            return {
+                'order_id': str(order.id),
+                'status': order.get_status_display(),
+                'tracking_number': order.tracking_number,
+                'carrier': order.carrier,
+                'shipping_method': order.get_shipping_method_display(),
+                'current_location': latest_tracking.location if latest_tracking else None,
+                'estimated_delivery': order.estimated_delivery,
+                'delivery_window': delivery_window,
+                'shipped_date': order.shipped_date,
+                'latest_update': {
+                    'status': latest_tracking.get_status_display() if latest_tracking else None,
+                    'timestamp': latest_tracking.timestamp if latest_tracking else None,
+                    'description': latest_tracking.description if latest_tracking else None
+                }
+            }
+        except Order.DoesNotExist:
+            logger.warning(
+                f"Order {order_id} not found for user {self.user.id}")
+            return {"error": "Order not found"}
+        except Exception as e:
+            logger.error(f"Error getting tracking info: {str(e)}")
+            logger.error(traceback.format_exc())
+            return {"error": f"Error retrieving tracking information: {str(e)}"}
+
+    @database_sync_to_async
+    def get_tracking_history(self, order_id: str) -> List[Dict]:
+        """Get complete tracking history for an order"""
+        try:
+            tracking_events = OrderTracking.objects.filter(
+                order_id=order_id,
+                order__user=self.user
+            ).order_by('-timestamp')
+
+            return [
+                {
+                    'timestamp': event.timestamp,
+                    'status': event.get_status_display(),
+                    'location': event.location,
+                    'description': event.description
+                }
+                for event in tracking_events
+            ]
+        except Exception as e:
+            logger.error(f"Error getting tracking history: {str(e)}")
+            logger.error(traceback.format_exc())
+            return []
+
+    @database_sync_to_async
+    def get_current_location(self, order_id: str) -> Dict:
+        """Get current shipment location and status"""
+        try:
+            order = Order.objects.get(id=order_id, user=self.user)
+            latest_tracking = order.tracking_history.order_by(
+                '-timestamp').first()
+
+            if not latest_tracking:
+                return {
+                    'location': None,
+                    'status': order.get_status_display(),
+                    'timestamp': None,
+                }
+
+            return {
+                'location': latest_tracking.location,
+                'status': latest_tracking.get_status_display(),
+                'timestamp': latest_tracking.timestamp,
+                'description': latest_tracking.description
+            }
+        except Order.DoesNotExist:
+            logger.warning(
+                f"Order {order_id} not found for user {self.user.id}")
+            return {"error": "Order not found"}
+        except Exception as e:
+            logger.error(f"Error getting current location: {str(e)}")
+            return {"error": f"Error retrieving location: {str(e)}"}
+
+    @database_sync_to_async
+    def get_delivery_estimate(self, order_id: str) -> Dict:
+        """Get estimated delivery date and time window"""
+        try:
+            order = Order.objects.get(id=order_id, user=self.user)
+
+            if not order.estimated_delivery:
+                return {"error": "No delivery estimate available"}
+
+            delivery_window = self._calculate_delivery_window(
+                order.shipping_method,
+                order.estimated_delivery
+            )
+
+            # Calculate confidence based on current status and tracking history
+            confidence = self._calculate_delivery_confidence(order)
+
+            return {
+                'date': order.estimated_delivery,
+                'time_window': delivery_window,
+                'confidence': confidence,
+                'shipping_method': order.get_shipping_method_display()
+            }
+        except Order.DoesNotExist:
+            return {"error": "Order not found"}
+        except Exception as e:
+            logger.error(f"Error getting delivery estimate: {str(e)}")
+            return {"error": f"Error retrieving delivery estimate: {str(e)}"}
+
+    @database_sync_to_async
+    def update_tracking_status(
+        self,
+        order_id: str,
+        status: str,
+        location: Optional[str] = None,
+        description: Optional[str] = None
+    ) -> Dict:
+        """Update tracking status and add to tracking history"""
+        try:
+            with transaction.atomic():
+                order = Order.objects.select_for_update().get(
+                    id=order_id,
+                    user=self.user
+                )
+
+                # Create new tracking event
+                tracking_event = OrderTracking.objects.create(
+                    order=order,
+                    status=status,
+                    location=location,
+                    description=description
+                )
+
+                # Update order status if needed
+                self._update_order_status_from_tracking(order, status)
+
+                return {
+                    'status': 'success',
+                    'tracking_id': tracking_event.id,
+                    'timestamp': tracking_event.timestamp
+                }
+        except Order.DoesNotExist:
+            return {"error": "Order not found"}
+        except Exception as e:
+            logger.error(f"Error updating tracking status: {str(e)}")
+            return {"error": f"Error updating tracking: {str(e)}"}
+
+    def _calculate_delivery_window(
+        self,
+        shipping_method: str,
+        estimated_date: timezone.datetime
+    ) -> Dict:
+        """Calculate delivery time window based on shipping method"""
+        windows = {
+            Order.ShippingMethod.STANDARD: {'start': 8, 'end': 20},
+            Order.ShippingMethod.EXPRESS: {'start': 9, 'end': 18},
+            Order.ShippingMethod.OVERNIGHT: {'start': 8, 'end': 12},
+            Order.ShippingMethod.LOCAL: {'start': 10, 'end': 22},
+        }
+
+        window = windows.get(shipping_method, {'start': 8, 'end': 20})
+        return {
+            'start_time': f"{window['start']:02d}:00",
+            'end_time': f"{window['end']:02d}:00",
+        }
+
+    def _calculate_delivery_confidence(self, order: Order) -> str:
+        """Calculate confidence level in delivery estimate"""
+        try:
+            # Get tracking history
+            tracking_count = order.tracking_history.count()
+            latest_tracking = order.tracking_history.order_by(
+                '-timestamp').first()
+
+            # Base confidence on various factors
+            if not latest_tracking:
+                return "LOW"
+
+            # Check if order is already delivered
+            if latest_tracking.status == OrderTracking.TrackingStatus.DELIVERED:
+                return "DELIVERED"
+
+            # Check for delivery exceptions
+            if latest_tracking.status == OrderTracking.TrackingStatus.EXCEPTION:
+                return "LOW"
+
+            # Calculate confidence based on shipping progress
+            if tracking_count < 2:
+                return "MEDIUM"
+
+            # High confidence if package is out for delivery
+            if latest_tracking.status == OrderTracking.TrackingStatus.OUT_FOR_DELIVERY:
+                return "HIGH"
+
+            # Check if making expected progress
+            expected_statuses = len(OrderTracking.TrackingStatus.choices)
+            current_status_index = list(
+                OrderTracking.TrackingStatus).index(latest_tracking.status)
+            progress = current_status_index / expected_statuses
+
+            if progress > 0.7:
+                return "HIGH"
+            elif progress > 0.3:
+                return "MEDIUM"
+            else:
+                return "LOW"
+
+        except Exception as e:
+            logger.error(f"Error calculating delivery confidence: {str(e)}")
+            return "UNKNOWN"
+
+    def _update_order_status_from_tracking(
+        self,
+        order: Order,
+        tracking_status: str
+    ) -> None:
+        """Update order status based on tracking status"""
+        # Map tracking statuses to order statuses
+        status_mapping = {
+            OrderTracking.TrackingStatus.ORDER_PLACED: Order.Status.PENDING,
+            OrderTracking.TrackingStatus.PROCESSING: Order.Status.PROCESSING,
+            OrderTracking.TrackingStatus.SHIPPED: Order.Status.SHIPPED,
+            OrderTracking.TrackingStatus.IN_TRANSIT: Order.Status.IN_TRANSIT,
+            OrderTracking.TrackingStatus.DELIVERED: Order.Status.DELIVERED,
+            OrderTracking.TrackingStatus.RETURNED: Order.Status.RETURNED,
+        }
+
+        new_status = status_mapping.get(tracking_status)
+        if new_status and order.status != new_status:
+            order.status = new_status
+            order.save(update_fields=['status', 'modified'])
+
+    @database_sync_to_async
+    def get_conversation_history(self, conversation_id, limit=4):
         """Fetch conversation history including all message types"""
         conversation = Conversation.objects.get(id=conversation_id)
         messages = []
