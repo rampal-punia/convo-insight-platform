@@ -5,14 +5,12 @@ from dataclasses import dataclass
 
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.language_models import BaseChatModel
-from langchain_core.tools import tool
-from langchain_core.messages import AIMessage, ToolMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from .prompt_manager import PromptManager
 from . import tool_manager as tm
 
-logger = logging.getLogger('orders')  # Get the orders logger
+logger = logging.getLogger('orders')
 
 
 @dataclass
@@ -21,7 +19,7 @@ class GraphConfig:
     llm: BaseChatModel
     intent: str
     order_details: dict
-    tool_manager: tm.ToolManager  # ToolManager instance
+    tool_manager: tm.ToolManager
     conversation_id: str
 
 
@@ -34,14 +32,14 @@ class GraphBuilder:
         self.prompt = PromptManager.get_prompt(self.config.intent)
         self.conversation_complete = False
 
-        # Initialize tool nodes
-        safe_tools = self.config.tool_manager.get_safe_tools()
-        sensitive_tools = self.config.tool_manager.get_sensitive_tools()
+        # Initialize tool sets
+        self.safe_tools = self.config.tool_manager.get_safe_tools()
+        self.sensitive_tools = self.config.tool_manager.get_sensitive_tools()
 
         # Bind tools to llm
-        self.llm_with_safe_tools = self.config.llm.bind_tools(safe_tools)
+        self.llm_with_safe_tools = self.config.llm.bind_tools(self.safe_tools)
         self.llm_with_sensitive_tools = self.config.llm.bind_tools(
-            sensitive_tools)
+            self.sensitive_tools)
 
         # Create chains
         self.safe_chain = self.prompt | self.llm_with_safe_tools
@@ -102,18 +100,29 @@ class GraphBuilder:
             user_input = latest_msg.content if isinstance(
                 latest_msg, HumanMessage) else str(latest_msg)
 
-            # Prepare input for chains
-            chain_input = {
+            # Prepare context with tracking-specific info if needed
+            context = {
                 "order_info": state["order_info"],
                 "conversation_history": history,
                 "user_input": user_input,
+                "tracking_status": "Not available",
+                "shipping_method": "Not available",
+                "estimated_delivery": "Not available"
             }
+
+            if self._is_tracking_request(user_input):
+                # Update tracking-specific context with actual values
+                context.update({
+                    "tracking_status": state["order_info"].get("status", "Not available"),
+                    "shipping_method": state["order_info"].get("shipping_method", "Not available"),
+                    "estimated_delivery": state["order_info"].get("estimated_delivery", "Not available")
+                })
 
             # Generate response
             if self._requires_sensitive_tools(latest_msg):
-                response = await self.sensitive_chain.ainvoke(chain_input)
+                response = await self.sensitive_chain.ainvoke(context)
             else:
-                response = await self.safe_chain.ainvoke(chain_input)
+                response = await self.safe_chain.ainvoke(context)
 
             # Update state
             if self._is_conversation_complete(response):
@@ -175,6 +184,14 @@ class GraphBuilder:
             'remove', 'refund', 'return'
         ]
         return any(keyword in content for keyword in sensitive_keywords)
+
+    def _is_tracking_request(self, message_content: str) -> bool:
+        """Check if the request is tracking-related"""
+        tracking_keywords = [
+            'track', 'where is', 'delivery status', 'shipping status',
+            'package location', 'delivery estimate', 'when will it arrive'
+        ]
+        return any(keyword in message_content.lower() for keyword in tracking_keywords)
 
     def _get_next_node(self, state: Dict) -> str:
         """Determines the next node in the graph"""
@@ -265,10 +282,8 @@ class GraphBuilder:
         workflow.add_node("agent", self._agent_function)
 
         # Add separate nodes for safe and sensitive tools
-        workflow.add_node("safe_tools",
-                          ToolNode(self.config.tool_manager.get_safe_tools()))
-        workflow.add_node("sensitive_tools",
-                          ToolNode(self.config.tool_manager.get_sensitive_tools()))
+        workflow.add_node("safe_tools", ToolNode(self.safe_tools))
+        workflow.add_node("sensitive_tools", ToolNode(self.sensitive_tools))
 
         # Add edges
         workflow.add_edge(START, "agent")
