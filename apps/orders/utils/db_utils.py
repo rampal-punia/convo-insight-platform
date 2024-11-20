@@ -585,3 +585,27 @@ class DatabaseOperations:
     def save_conversation_title(conversation, title):
         conversation.title = title
         conversation.save()
+
+    @database_sync_to_async
+    def _extract_new_quantity(self, content: str) -> Optional[int]:
+        """Extract the new quantity from the user's message"""
+        try:
+            import re
+            # Look for patterns like "change quantity to X" or "to X"
+            quantity_patterns = [
+                r'change (?:the )?quantity to (\d+)',
+                r'quantity to (\d+)',
+                r'change (?:it )?to (\d+)',
+                r'to (\d+)',
+                r'quantity (?:of )?(\d+)'
+            ]
+
+            for pattern in quantity_patterns:
+                matches = re.search(pattern, content.lower())
+                if matches:
+                    return int(matches.group(1))
+
+            return None
+        except Exception as e:
+            logger.error(f"Error extracting quantity: {str(e)}")
+            return None
