@@ -1,7 +1,6 @@
 import json
 import logging
 import traceback
-import os
 from typing import Optional
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
