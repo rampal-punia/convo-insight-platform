@@ -1,7 +1,7 @@
 import json
 import logging
 import traceback
-from decimal import Decimal
+import os
 from typing import Optional
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
@@ -164,6 +164,19 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
 
             graph_builder = GraphBuilder(config)
             self.graph = graph_builder.build()
+
+            # Save the graph visualization
+            # output_path = await graph_builder.save_graph_visualization()
+            # print(f"Graph saved to: {output_path}")
+
+            # # Use the png_path as needed in your WebSocket communication
+            # relative_path = os.path.relpath(output_path, settings.MEDIA_ROOT)
+            # media_url = os.path.join(settings.MEDIA_URL, relative_path)
+
+            # await self.send(text_data=json.dumps({
+            #     'type': 'graph_visualization',
+            #     'url': media_url
+            # }))
 
             # Save initial message
             user_message = await self.db_ops.save_message(
