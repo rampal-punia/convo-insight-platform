@@ -1,7 +1,15 @@
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 import logging
+import os
+import base64
+from io import BytesIO
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
+from datetime import datetime
 import traceback
 from dataclasses import dataclass
+from graphviz import Digraph
+from django.conf import settings
 
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
@@ -49,6 +57,9 @@ class GraphBuilder:
 
         # Message deduplication
         self.processed_messages = set()
+
+        # Compiled graph reference
+        self._compiled_graph = None
 
     async def _agent_function(self, state: Dict) -> Dict:
         """Agent function that processes the state and generates responses"""
@@ -227,12 +238,18 @@ class GraphBuilder:
             if isinstance(last_message, AIMessage):
                 if hasattr(last_message, 'additional_kwargs') and 'tool_calls' in last_message.additional_kwargs:
                     tool_calls = last_message.additional_kwargs['tool_calls']
+                    logger.info(
+                        f"Calling tools from last message: {last_message}")
                     for tool_call in tool_calls:
                         if isinstance(tool_call, dict) and 'function' in tool_call:
                             tool_name = tool_call['function']['name']
+                            logger.info(
+                                f"Received tool name: {tool_name}")
                             if self.config.tool_manager.is_sensitive_tool(tool_name):
                                 state["confirmation_pending"] = True
                                 return END
+                    logger.info(
+                        f"Returning safe tool 'name': {tool_name}")
                     return "safe_tools"
 
                 # Check for completion
@@ -281,7 +298,7 @@ class GraphBuilder:
             "agent",
             self._get_next_node,
             {
-                "agent": "agent",
+                # "agent": "agent",
                 "safe_tools": "safe_tools",
                 "sensitive_tools": "sensitive_tools",
                 END: END
@@ -295,4 +312,87 @@ class GraphBuilder:
         logger.debug("Graph building completed, compiling workflow")
 
         # Only interrupt before sensitive tools
-        return workflow.compile(interrupt_before=["sensitive_tools"])
+        self._compiled_graph = workflow.compile(
+            interrupt_before=["sensitive_tools"])
+        return self._compiled_graph
+
+    async def save_graph_visualization(self, output_path: Optional[str] = None) -> str:
+        """Save the graph visualization as a PNG file asynchronously.
+
+        Args:
+            output_path (str, optional): Path where the PNG should be saved. 
+                If None, saves to MEDIA_ROOT/graph_visualizations/
+
+        Returns:
+            str: Path to the saved visualization file
+        """
+        try:
+            if not self._compiled_graph:
+                raise ValueError("Graph must be built before visualization")
+
+            # Get the mermaid PNG data using LangGraph's built-in method
+            png_data = self._compiled_graph.get_graph().draw_mermaid_png()
+
+            # Set up the output path
+            if output_path is None:
+                # Create directory if it doesn't exist
+                vis_dir = os.path.join(
+                    settings.MEDIA_ROOT, 'graph_visualizations')
+                os.makedirs(vis_dir, exist_ok=True)
+
+                # Generate unique filename using timestamp
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                output_path = os.path.join(
+                    vis_dir, f'graph_{self.config.intent}_{timestamp}.png')
+
+            # Write the PNG data directly to file
+            with open(output_path, 'wb') as f:
+                f.write(png_data)
+
+            logger.info(f"Graph visualization saved to: {output_path}")
+            return output_path
+
+        except Exception as e:
+            logger.error(f"Error saving graph visualization: {str(e)}")
+            logger.error(traceback.format_exc())
+            raise
+
+    def get_graph_base64(self) -> str:
+        """Get the graph visualization as a base64 encoded string.
+
+        Returns:
+            str: Base64 encoded PNG data
+        """
+        try:
+            if not self._compiled_graph:
+                raise ValueError("Graph must be built before visualization")
+
+            # Get the PNG data using LangGraph's built-in method
+            png_data = self._compiled_graph.get_graph().draw_mermaid_png()
+
+            # Convert to base64
+            base64_data = base64.b64encode(png_data).decode('utf-8')
+            return f"data:image/png;base64,{base64_data}"
+
+        except Exception as e:
+            logger.error(f"Error getting graph base64: {str(e)}")
+            logger.error(traceback.format_exc())
+            raise
+
+    def get_graph_svg(self) -> str:
+        """Get the graph visualization as SVG.
+
+        Returns:
+            str: SVG representation of the graph
+        """
+        try:
+            if not self._compiled_graph:
+                raise ValueError("Graph must be built before visualization")
+
+            # Get the SVG directly from the graph
+            return self._compiled_graph.get_graph().draw_mermaid_svg()
+
+        except Exception as e:
+            logger.error(f"Error getting graph SVG: {str(e)}")
+            logger.error(traceback.format_exc())
+            raise
