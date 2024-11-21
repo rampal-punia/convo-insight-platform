@@ -372,6 +372,7 @@ class SupportAgentConsumer(AsyncWebsocketConsumer):
 
         except Exception as e:
             logger.error(f"Error in initial conversation: {str(e)}")
+            logger.error(traceback.format_exc())
             await self.send_error("Error processing your message")
 
     async def check_for_order_mention(self, user_input: str) -> bool:

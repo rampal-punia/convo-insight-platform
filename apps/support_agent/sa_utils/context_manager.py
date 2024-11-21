@@ -52,6 +52,7 @@ class ConversationStateData:
     active_tools: list = field(default_factory=list)
     context_variables: Dict = field(default_factory=dict)
     order_context: Dict = field(default_factory=dict)
+    user_preferences: Dict = field(default_factory=dict)
     conversation_metrics: Dict = field(default_factory=dict)
     last_snapshot_time: Optional[datetime] = None
 
@@ -119,10 +120,12 @@ class ConversationContextManager:
                     return self._deserialize_state(data)
                 except json.JSONDecodeError:
                     logger.error("Failed to decode cached state JSON")
+                    logger.error(traceback.format_exc())
                     return None
             return None
         except Exception as e:
             logger.error(f"Error retrieving cached state: {str(e)}")
+            logger.error(traceback.format_exc())
             return None
 
     def _serialize_state(self, state: ConversationStateData) -> str:
@@ -132,6 +135,7 @@ class ConversationContextManager:
             return json.dumps(state_dict, cls=CustomJSONEncoder)
         except Exception as e:
             logger.error(f"Error serializing state: {str(e)}")
+            logger.error(traceback.format_exc())
             raise
 
     def _deserialize_state(self, data: Dict[str, Any]) -> ConversationStateData:
@@ -154,6 +158,7 @@ class ConversationContextManager:
             )
         except Exception as e:
             logger.error(f"Error deserializing state: {str(e)}")
+            logger.error(traceback.format_exc())
             # Return a new state object if deserialization fails
             return ConversationStateData(conversation_id=data.get('conversation_id', 'unknown'))
 
@@ -244,6 +249,8 @@ class ConversationContextManager:
                     if hasattr(state, key):
                         setattr(state, key, value)
                     else:
+                        if not state.context_variables:
+                            state.context_variables = {}
                         state.context_variables[key] = value
 
             # Update last modification time
@@ -317,6 +324,7 @@ class ConversationContextManager:
             return True
         except Exception as e:
             logger.error(f"Error ensuring conversation exists: {str(e)}")
+            logger.error(traceback.format_exc())
             return False
 
     async def _create_state_snapshot(self, conversation_id: str, state: ConversationStateData, snapshot_type: str = 'AU'):
@@ -327,6 +335,7 @@ class ConversationContextManager:
             if not exists:
                 logger.error(
                     "Cannot create snapshot: conversation does not exist")
+                logger.error(traceback.format_exc())
                 return None
 
             # Save snapshot to database
@@ -350,6 +359,7 @@ class ConversationContextManager:
             exists = await self._ensure_conversation_exists(conversation_id)
             if not exists:
                 logger.error("Cannot save state: conversation does not exist")
+                logger.error(traceback.format_exc())
                 return False
 
             # Get current state

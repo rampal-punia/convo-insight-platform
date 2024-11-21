@@ -93,6 +93,7 @@ class Assistant:
                                list) and not result.content[0].get("text")
                 ):
                     logger.warning("Invalid response from LLM, retrying...")
+                    logger.error(traceback.format_exc())
                     messages.append(HumanMessage(
                         content="Please provide a clear response with proper context awareness."
                     ))
@@ -102,6 +103,7 @@ class Assistant:
                 if order_info and not self._validates_order_context(result):
                     logger.warning(
                         "Response missing order context, reinforcing...")
+                    logger.error(traceback.format_exc())
                     messages.append(HumanMessage(
                         content="Please ensure your response acknowledges the current order context."
                     ))
@@ -169,6 +171,7 @@ You can ask me to:
 """
         except Exception as e:
             logger.error(f"Error formatting order details: {str(e)}")
+            logger.error(traceback.format_exc())
             return "I'm having trouble formatting the order details. Please try again."
 
     def _format_history(self, messages: List[AnyMessage], max_messages: int = 5) -> str:

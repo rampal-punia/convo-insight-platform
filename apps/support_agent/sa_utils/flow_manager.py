@@ -34,74 +34,21 @@ class ConversationFlowManager:
         Returns: (new_state, response_message)
         """
         try:
-            # Check for explicit order mentions first
-            mentioned_order_id = self._extract_order_id(user_input)
-
-            # Get current context
-            context = await self.context_manager.get_context(self.conversation_id)
-            current_order_id = context.get('order_id')
-
-            # If no explicit order mentioned, use the last active order
-            effective_order_id = mentioned_order_id or current_order_id
-
-            # Detect intent
-            intent_result = await self.intent_router.detect_intent(user_input, context)
-            logger.info(
-                f"Detected intent: {intent_result.intent} with confidence: {intent_result.confidence}")
-
-            # If modifying/tracking/canceling, ensure we're using the correct order
-            if intent_result.intent in ['modify_order_quantity', 'track_order', 'cancel_order']:
-                if not effective_order_id:
-                    return ConversationState(
-                        state='awaiting_order_selection'
-                    ), "Which order would you like to modify?"
-
-                # Get order details
-                order_info = await self.db_ops.get_order_details(effective_order_id)
-                if not order_info:
-                    return ConversationState(
-                        state='error'
-                    ), f"Could not find order #{effective_order_id}"
-
-                # Update context with current order
-                await self.context_manager.update_context(
-                    self.conversation_id,
-                    {
-                        'order_id': effective_order_id,
-                        'order_info': order_info,
-                        'last_mentioned_order_id': effective_order_id
-                    }
-                )
-
-                return ConversationState(
-                    state='active',
-                    intent=intent_result.intent,
-                    order_id=effective_order_id,
-                    order_info=order_info,
-                    context={'last_action': 'order_reference'}
-                ), None
-
-            # Process based on current state
             if current_state == 'initial':
                 return await self._handle_initial_state(user_input)
             elif current_state == 'awaiting_order_selection':
                 return await self._handle_order_selection(user_input)
             elif current_state == 'active':
-                return await self._handle_active_state(
-                    user_input, effective_order_id, intent_result
-                )
-
-            logger.error(f"Unknown conversation state: {current_state}")
-            return ConversationState(
-                state='initial'
-            ), "I apologize, but I'm having trouble with your request. Could you please start over?"
+                return await self._handle_active_state(user_input)
+            else:
+                logger.error(f"Unknown conversation state: {current_state}")
+                logger.error(traceback.format_exc())
+                return ConversationState(state='initial'), "I apologize, but I'm having trouble with your request. Could you please start over?"
 
         except Exception as e:
             logger.error(f"Error in process_message: {str(e)}")
             logger.error(traceback.format_exc())
-            return ConversationState(
-                state='initial'
-            ), "I encountered an error. Could you please try again?"
+            return ConversationState(state='initial'), "I encountered an error. Could you please try again?"
 
     async def _handle_initial_state(self, user_input: str) -> Tuple[ConversationState, str]:
         """Handle messages in initial state"""
@@ -137,12 +84,7 @@ class ConversationFlowManager:
             "I couldn't identify an order number. Could you please provide the order number you'd like to discuss?"
         )
 
-    async def _handle_active_state(
-        self,
-        user_input: str,
-        order_id: Optional[str],
-        intent_result: Any
-    ) -> Tuple[ConversationState, Optional[str]]:
+    async def _handle_active_state(self, user_input: str) -> Tuple[ConversationState, Optional[str]]:
         """Handle messages when conversation is active with proper intent and entity tracking"""
         try:
             # Get current context
@@ -152,74 +94,57 @@ class ConversationFlowManager:
             intent_result = await self.intent_router.detect_intent(user_input, context)
             logger.info(
                 f"Detected intent: {intent_result.intent} with confidence: {intent_result.confidence}")
+            logger.error(traceback.format_exc())
 
             # Extract and consolidate entities with context awareness
             entities = intent_result.entities or {}
 
-            # Determine the correct order_id with priority:
-            # 1. Explicitly mentioned in current message
-            # 2. Active order from context
-            # 3. Last mentioned order
-            current_order_id = (
-                # Check current message
-                self._extract_order_id(user_input) or
-                # Then check active order
-                context.get('active_order_id') or
-                # Then passed order_id
-                order_id or
-                # Finally last mentioned
-                context.get('last_mentioned_order_id')
-            )
+            # Get or extract order information
+            order_info = context.get('order_info')
+            order_id = context.get('order_id') or entities.get('order_id')
 
-            # Get order information if we have an order ID
-            order_info = None
-            if current_order_id:
-                order_info = await self.db_ops.get_order_details(current_order_id)
-                if order_info:
-                    # Update context with current order information
-                    await self.context_manager.update_context(
-                        self.conversation_id,
-                        {
-                            'active_order_id': current_order_id,
-                            'last_mentioned_order_id': current_order_id,
-                            'order_info': order_info
-                        }
-                    )
+            if order_id and not order_info:
+                order_info = await self.db_ops.get_order_details(order_id)
 
-            # If we need order context but don't have it, request it
-            if self._intent_requires_order(intent_result.intent) and not order_info:
-                recent_orders = await self.db_ops.get_recent_orders(self.user_id)
-                if recent_orders:
-                    order_list = self._format_order_list(recent_orders)
-                    return ConversationState(
-                        state='awaiting_order_selection',
-                        intent=intent_result.intent
-                    ), f"Which order would you like to modify?\n\n{order_list}"
-                return ConversationState(
-                    state='awaiting_order_selection',
-                    intent=intent_result.intent
-                ), "Please provide the order number you'd like to modify."
+            # If still no order info but needed, try context
+            if not order_info and self._intent_requires_order(intent_result.intent):
+                last_order_id = context.get('last_mentioned_order_id') or await self._find_last_discussed_order()
+                if last_order_id:
+                    order_info = await self.db_ops.get_order_details(last_order_id)
+                    if order_info:
+                        order_id = last_order_id
 
             # Update context with new information
             context_updates = {
                 'current_intent': intent_result.intent,
                 'previous_intent': context.get('current_intent'),
-                'extracted_entities': entities,
+                'extracted_entities': entities,  # Store extracted entities
                 'last_message_time': datetime.now(timezone.utc)
             }
 
             if order_info:
-                context_updates['order_info'] = order_info
+                context_updates.update({
+                    'order_id': order_id,
+                    'order_info': order_info,
+                    'last_mentioned_order_id': order_id
+                })
 
             await self.context_manager.update_context(
                 self.conversation_id,
                 context_updates
             )
 
+            # Check if we need order info but don't have it
+            if self._intent_requires_order(intent_result.intent) and not order_info:
+                return ConversationState(
+                    state='awaiting_order_selection',
+                    intent=intent_result.intent
+                ), "I'll help you with that. Could you please provide the order number you'd like to discuss?"
+
             return ConversationState(
                 state='active',
                 intent=intent_result.intent,
-                order_id=current_order_id,
+                order_id=order_id,
                 order_info=order_info,
                 context={**context, **context_updates}
             ), None
@@ -323,6 +248,7 @@ class ConversationFlowManager:
             return None
         except Exception as e:
             logger.error(f"Error finding last order: {str(e)}")
+            logger.error(traceback.format_exc())
             return None
 
     def _intent_requires_order(self, intent: str) -> bool:

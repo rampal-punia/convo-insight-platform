@@ -144,70 +144,65 @@ class IntentRouter:
         user_input: str,
         context: Dict[str, Any]
     ) -> IntentScore:
-        """Detect intent with improved context awareness"""
+        """
+        Detect intent from user input using multiple detection methods.
+
+        Args:
+            user_input: The user's message
+            context: Current conversation context including history
+
+        Returns:
+            IntentScore object containing detected intent and confidence
+        """
         try:
-            # Get current intent from context
-            current_intent = context.get('current_intent')
-
-            # Try rule-based detection first
+            # First try rule-based pattern matching
             rule_based_result = self._rule_based_detection(user_input.lower())
-
-            # If we have a strong rule-based match, use it
             if rule_based_result and rule_based_result.confidence > 0.8:
-                # Check if intent transition is valid
-                if current_intent and current_intent != rule_based_result.intent:
-                    if not await self.validate_intent_transition(
-                        current_intent,
-                        rule_based_result.intent,
-                        context
-                    ):
-                        # If transition isn't valid, stick with current intent
-                        return IntentScore(
-                            intent=current_intent,
-                            confidence=0.7,
-                            entities=self._extract_entities(
-                                user_input, current_intent, context)
-                        )
+                # If we detect order_detail intent, ensure we have order context
+                if rule_based_result.intent == 'order_detail':
+                    # Use _extract_entities to get order ID
+                    extracted_entities = self._extract_entities(
+                        user_input, 'order_detail', context)
+                    order_id = context.get(
+                        'order_id') or extracted_entities.get('order_id')
+                    if order_id:
+                        rule_based_result.entities = {'order_id': order_id}
                 return rule_based_result
 
-            # If we have a current intent and no strong new match,
-            # try to interpret within current intent
-            if current_intent and not rule_based_result:
-                current_intent_score = self._score_for_current_intent(
-                    user_input, current_intent, context)
-                if current_intent_score.confidence > 0.5:
-                    return current_intent_score
-
-            # Use LLM for more nuanced detection
+            # Use LLM for more nuanced intent detection
             llm_result = await self._llm_based_detection(user_input, context)
             if llm_result:
+                # Combine results if we have both
                 if rule_based_result:
-                    return self._combine_intent_results(
-                        rule_based_result, llm_result)
+                    return self._combine_intent_results(rule_based_result, llm_result)
                 return llm_result
 
-            # Fall back to rule-based or default
+            # Fall back to rule-based result or default
             if rule_based_result:
                 return rule_based_result
 
-            # Default to current intent or order_detail
-            return IntentScore(
-                intent=current_intent or 'order_detail',
-                confidence=0.5,
-                entities=self._extract_entities(
-                    user_input,
-                    current_intent or 'order_detail',
-                    context
+            # If we're in an order context, default to order_detail
+            if context.get('order_id'):
+                return IntentScore(
+                    intent='order_detail',
+                    confidence=0.6,
+                    entities={'order_id': context['order_id']}
                 )
+
+            return IntentScore(
+                intent=self.default_intent,
+                confidence=0.5
             )
 
         except Exception as e:
             logger.error(f"Error in intent detection: {str(e)}")
+            logger.error(traceback.format_exc())
             return IntentScore(
-                intent='order_detail',
+                intent=self.default_intent,
                 confidence=0.5,
+                # Still try to extract entities
                 entities=self._extract_entities(
-                    user_input, 'order_detail', context)
+                    user_input, self.default_intent, context)
             )
 
     def _rule_based_detection(self, user_input: str) -> Optional[IntentScore]:
@@ -503,31 +498,3 @@ class IntentRouter:
         confidence_threshold = 0.8
         result = await self.detect_intent(context.get('last_message', ''), context)
         return result.confidence >= confidence_threshold
-
-    def _score_for_current_intent(
-        self,
-        user_input: str,
-        current_intent: str,
-        context: Dict[str, Any]
-    ) -> IntentScore:
-        """Score how well the input fits the current intent"""
-        # Add specific scoring logic for each intent
-        if current_intent == 'modify_order_quantity':
-            quantity_match = re.search(
-                r'(\d+)\s*(?:items?|pieces?|qty|to\s+(\d+))',
-                user_input.lower()
-            )
-            if quantity_match:
-                return IntentScore(
-                    intent=current_intent,
-                    confidence=0.8,
-                    entities={'quantity': quantity_match.group(1)}
-                )
-
-        # Add similar logic for other intents
-        return IntentScore(
-            intent=current_intent,
-            confidence=0.6,
-            entities=self._extract_entities(
-                user_input, current_intent, context)
-        )

@@ -61,6 +61,7 @@ class DatabaseOperations:
         except Order.DoesNotExist:
             logger.warning(
                 f"Order {order_id} not found for user {self.user.id}")
+            logger.error(traceback.format_exc())
             return {"error": "Order not found"}
         except Exception as e:
             logger.error(f"Error getting tracking info: {str(e)}")
@@ -155,9 +156,11 @@ class DatabaseOperations:
         except Order.DoesNotExist:
             logger.warning(
                 f"Order {order_id} not found for user {self.user.id}")
+            logger.error(traceback.format_exc())
             return {"error": "Order not found"}
         except Exception as e:
             logger.error(f"Error getting current location: {str(e)}")
+            logger.error(traceback.format_exc())
             return {"error": f"Error retrieving location: {str(e)}"}
 
     @database_sync_to_async
@@ -187,6 +190,7 @@ class DatabaseOperations:
             return {"error": "Order not found"}
         except Exception as e:
             logger.error(f"Error getting delivery estimate: {str(e)}")
+            logger.error(traceback.format_exc())
             return {"error": f"Error retrieving delivery estimate: {str(e)}"}
 
     @database_sync_to_async
@@ -225,6 +229,7 @@ class DatabaseOperations:
             return {"error": "Order not found"}
         except Exception as e:
             logger.error(f"Error updating tracking status: {str(e)}")
+            logger.error(traceback.format_exc())
             return {"error": f"Error updating tracking: {str(e)}"}
 
     def _calculate_delivery_window(
@@ -289,6 +294,7 @@ class DatabaseOperations:
 
         except Exception as e:
             logger.error(f"Error calculating delivery confidence: {str(e)}")
+            logger.error(traceback.format_exc())
             return "UNKNOWN"
 
     def _update_order_status_from_tracking(
@@ -696,6 +702,7 @@ class DatabaseOperations:
             return None
         except Exception as e:
             logger.error(f"Error extracting quantity: {str(e)}")
+            logger.error(traceback.format_exc())
             return None
 
     @database_sync_to_async
