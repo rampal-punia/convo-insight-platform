@@ -294,7 +294,7 @@ class GraphBuilder:
             "agent",
             self._get_next_node,
             {
-                # "agent": "agent",
+                "agent": "agent",
                 "safe_tools": "safe_tools",
                 "sensitive_tools": "sensitive_tools",
                 END: END

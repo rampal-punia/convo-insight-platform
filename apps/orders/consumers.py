@@ -165,7 +165,7 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
             self.graph = graph_builder.build()
 
             # Save the graph visualization
-            # output_path = await graph_builder.save_graph_visualization()
+            output_path = await graph_builder.save_graph_visualization()
             # print(f"Graph saved to: {output_path}")
 
             # # Use the png_path as needed in your WebSocket communication

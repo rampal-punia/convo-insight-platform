@@ -1,4 +1,3 @@
-from django.db.models.base import Model as Model
 from django.views.generic import ListView, DetailView, CreateView, UpdateView, DeleteView
 from django.urls import reverse_lazy
 from django.db import transaction

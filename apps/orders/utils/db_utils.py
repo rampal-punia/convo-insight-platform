@@ -1,7 +1,7 @@
 from channels.db import database_sync_to_async
 import traceback
 from django.utils import timezone
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from django.db import transaction
 from convochat.models import Conversation, Message, UserText, AIText
 from langchain_core.messages import AIMessage, HumanMessage
@@ -294,33 +294,75 @@ class DatabaseOperations:
 
         return messages
 
-    async def get_or_create_conversation(self, conversation_id, order_id):
-        """Create or get existing conversation and link it to the order"""
-        conversation, created = await database_sync_to_async(Conversation.objects.update_or_create)(
-            id=conversation_id,
-            defaults={
-                'user': self.user,
-                'status': 'AC'
-            }
-        )
+    @database_sync_to_async
+    def get_or_create_conversation(
+        self,
+        conversation_id: str,
+        order_id: Optional[str] = None
+    ) -> Tuple[Conversation, Optional[Order]]:
+        """Get or create conversation with optional order link"""
+        conversation = self.get_or_create_general_conversation(conversation_id)
 
-        order = await database_sync_to_async(Order.objects.get)(id=order_id)
-        await database_sync_to_async(OrderConversationLink.objects.get_or_create)(
-            order=order,
-            conversation=conversation
-        )
-
-        if created:
-            await database_sync_to_async(
-                Conversation.objects.filter(user=self.user, status='AC').exclude(
-                    id=conversation_id).update
-            )(status='EN')
+        order = None
+        if order_id:
+            order = self.get_order_by_id(order_id)
+            if order:
+                # Link order to conversation if not already linked
+                self.link_order_to_conversation(order, conversation)
 
         return conversation, order
 
     @database_sync_to_async
-    def save_message(self, conversation, content_type, is_from_user=True, in_reply_to=None):
-        """Save a message to the database"""
+    def get_order_by_id(self, order_id: str) -> Optional[Order]:
+        """Get order by ID if it belongs to the user"""
+        try:
+            return Order.objects.get(id=order_id, user=self.user)
+        except Order.DoesNotExist:
+            return None
+
+    @database_sync_to_async
+    def link_order_to_conversation(self, order: Order, conversation: Conversation):
+        """Link an order to a conversation if not already linked"""
+        from orders.models import OrderConversationLink
+        OrderConversationLink.objects.get_or_create(
+            order=order,
+            conversation=conversation
+        )
+
+    # async def get_or_create_conversation(self, conversation_id, order_id=None):
+    #     """Create or get existing conversation and link it to the order"""
+    #     conversation, created = await database_sync_to_async(Conversation.objects.update_or_create)(
+    #         id=conversation_id,
+    #         defaults={
+    #             'user': self.user,
+    #             'status': 'AC'
+    #         }
+    #     )
+    #     if order_id:
+    #         order = await database_sync_to_async(Order.objects.get)(id=order_id)
+    #         await database_sync_to_async(OrderConversationLink.objects.get_or_create)(
+    #             order=order,
+    #             conversation=conversation
+    #         )
+
+    #         if created:
+    #             await database_sync_to_async(
+    #                 Conversation.objects.filter(user=self.user, status='AC').exclude(
+    #                     id=conversation_id).update
+    #             )(status='EN')
+
+    #         return conversation, order
+    #     return conversation, None
+
+    @database_sync_to_async
+    def save_message(
+        self,
+        conversation: Conversation,
+        content_type: str = 'TE',
+        is_from_user: bool = True,
+        in_reply_to: Optional[Message] = None
+    ) -> Message:
+        """Save a message to the conversation"""
         return Message.objects.create(
             conversation=conversation,
             content_type=content_type,
@@ -329,20 +371,25 @@ class DatabaseOperations:
         )
 
     @database_sync_to_async
-    def save_usertext(self, message, input_data):
-        """Save user text content"""
+    def save_usertext(self, message: Message, content: str) -> UserText:
+        """Save user message content"""
         return UserText.objects.create(
             message=message,
-            content=input_data,
+            content=content
         )
 
     @database_sync_to_async
-    def save_aitext(self, message, input_data, tool_calls=None):
-        """Save AI text content with optional tool calls"""
+    def save_aitext(
+        self,
+        message: Message,
+        content: str,
+        tool_calls: Optional[List] = None
+    ) -> AIText:
+        """Save AI message content with optional tool calls"""
         return AIText.objects.create(
             message=message,
-            content=input_data,
-            tool_calls=tool_calls if tool_calls else []
+            content=content,
+            tool_calls=tool_calls or []
         )
 
     @database_sync_to_async
@@ -609,3 +656,39 @@ class DatabaseOperations:
         except Exception as e:
             logger.error(f"Error extracting quantity: {str(e)}")
             return None
+
+    @database_sync_to_async
+    def get_recent_orders(self, user_id: int, limit: int = 5) -> List[Dict]:
+        """Get user's recent orders"""
+        recent_orders = Order.objects.filter(
+            user_id=user_id
+        ).order_by('-created')[:limit]
+
+        return [{
+            'id': order.id,
+            'created_date': order.created.strftime("%Y-%m-%d"),
+            'status': order.get_status_display(),
+            'item_count': order.items.count(),
+            'total_amount': order.total_amount
+        } for order in recent_orders]
+
+    @database_sync_to_async
+    def get_or_create_general_conversation(self, conversation_id: str) -> Conversation:
+        """Create or get a general conversation without order context"""
+        conversation, created = Conversation.objects.get_or_create(
+            id=conversation_id,
+            defaults={
+                'user': self.user,
+                'status': 'AC',
+                'title': 'General Support Conversation'
+            }
+        )
+
+        if created:
+            # End other active conversations
+            Conversation.objects.filter(
+                user=self.user,
+                status='AC'
+            ).exclude(id=conversation_id).update(status='EN')
+
+        return conversation
