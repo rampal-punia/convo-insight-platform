@@ -24,6 +24,8 @@ urlpatterns = [
          name='orders'),
     path('playground/', include('playground.urls'),
          name='playground'),
+    path('support_agent/', include('support_agent.urls'),
+         name='support_agent'),
 ]
 
 if settings.DEBUG:
