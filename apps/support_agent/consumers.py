@@ -1,573 +1,443 @@
+"""
+Intent-aware Order Support Consumer with Dynamic Routing.
+
+This module implements a WebSocket consumer for handling order-related queries
+with dynamic intent detection and contextual conversation management.
+"""
+
 import json
 import logging
 import traceback
-from typing import Optional
+from typing import Dict, Any, Optional
 from channels.generic.websocket import AsyncWebsocketConsumer
-from channels.db import database_sync_to_async
-from django.conf import settings
 
 from langchain_core.messages import AIMessage, HumanMessage
-from langchain_openai import ChatOpenAI
-from convochat.models import Conversation
-from .utils.tool_manager import create_tool_manager
+from .sa_utils.flow_manager import ConversationFlowManager
+from .sa_utils.intent_router import IntentRouter
+from .sa_utils.context_manager import ConversationContextManager
+from .sa_utils.tool_manager import get_all_tools
+from .sa_utils.graph_builder import create_customer_support_agent, State
 from orders.utils.db_utils import DatabaseOperations
-from .utils.graph_builder import GraphBuilder, GraphConfig
 
 logger = logging.getLogger('orders')
 
 
-class OrderSupportConsumer(AsyncWebsocketConsumer):
+class SupportAgentConsumer(AsyncWebsocketConsumer):
+    """
+    WebSocket consumer for handling order-related support conversations.
+    Implements dynamic intent detection and contextual conversation management.
+    """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.awaiting_confirmation = False
-        self.pending_tool_calls = None
+        self.context_manager = None
+        self.intent_router = None
+        self.db_ops = None
+        self.tools = None
+        self.graph = None
+        self.conversation_id = None
+        self.current_intent = None
+        self.current_order_id = None
 
     async def connect(self):
-        """Initialize consumer and establish WebSocket connection"""
-        logger.info(
-            f"WebSocket connection attempt from user {self.scope['user']}")
+        """Initialize connection and required components"""
+        try:
+            logger.info(
+                f"WebSocket connection attempt from user {self.scope['user']}")
 
-        # Initialize user and check authentication
-        self.user = self.scope["user"]
-        if not self.user.is_authenticated:
-            logger.warning("Unauthenticated connection attempt")
+            # Validate authentication
+            if not self.scope["user"].is_authenticated:
+                logger.warning("Unauthenticated connection attempt")
+                await self.close()
+                return
+
+            # Initialize components
+            self.user = self.scope["user"]
+            self.user_id = self.user.id
+            self.conversation_id = self.scope['url_route']['kwargs'].get(
+                'conversation_id')
+            self.conversation_state = 'initial'
+
+            # Initialize utility classes
+            self.db_ops = DatabaseOperations(self.user)
+            self.tools = get_all_tools()
+            self.context_manager = ConversationContextManager(self.db_ops)
+            self.intent_router = IntentRouter()
+            self.flow_manager = ConversationFlowManager(
+                self.user_id,
+                self.conversation_id,
+                self.db_ops,
+                self.context_manager,
+                self.intent_router
+            )
+
+            await self.accept()
+
+            # Send welcome message
+            await self.send_json({
+                'type': 'welcome',
+                'message': f"Welcome, {self.user}! How can I assist you with your order today?"
+            })
+
+        except Exception as e:
+            logger.error(f"Error in connect: {str(e)}")
+            logger.error(traceback.format_exc())
             await self.close()
-            return
-
-        # Initialize database operations and tool manager
-        self.db_ops = DatabaseOperations(self.user)
-        self.tool_manager = create_tool_manager(self.db_ops)
-
-        # Get conversation ID from URL route
-        self.conversation_id = self.scope['url_route']['kwargs'].get(
-            'conversation_id')
-        await self.accept()
-
-        logger.info(
-            f"WebSocket connected for conversation {self.conversation_id}")
-
-        # Send welcome message
-        await self.send(text_data=json.dumps({
-            'type': 'welcome',
-            'message': f"Welcome, {self.user}! You are now connected to Order Support."
-        }))
-
-        # Initialize LLM
-        self.llm = ChatOpenAI(
-            model=settings.GPT_MINI,
-            openai_api_key=settings.OPENAI_API_KEY,
-            temperature=0,
-            streaming=True
-        )
-
-        self.current_messages = []
-        self.graph = None
 
     async def disconnect(self, close_code):
         """Handle WebSocket disconnection"""
-        logger.info(f"WebSocket disconnected: {self.channel_name}")
-        pass
+        try:
+            if self.conversation_id:
+                await self.context_manager.save_conversation_state(
+                    self.conversation_id,
+                    {
+                        'last_intent': self.current_intent,
+                        'status': 'disconnected'
+                    }
+                )
+            logger.info(f"WebSocket disconnected: {self.channel_name}")
+
+        except Exception as e:
+            logger.error(f"Error in disconnect: {str(e)}")
+            logger.error(traceback.format_exc())
 
     async def receive(self, text_data=None):
-        """Handle incoming WebSocket messages"""
+        """Handle incoming WebSocket messages with dynamic intent detection"""
         try:
             data = json.loads(text_data)
-            message_type = data.get('type')
-            logger.info(f"Received message type: {message_type}")
-            logger.debug(f"Full message data: {data}")
+            message_type = data.get('type', 'message')
 
             # Route message based on type
-            if message_type == 'intent':
-                await self.handle_intent(data)
-            elif message_type == 'message':
-                await self.handle_message(data)
-            elif message_type == 'confirmation':
-                await self.handle_confirmation(data)
+            handlers = {
+                'message': self.handle_message,
+                'confirmation': self.handle_confirmation
+            }
+
+            handler = handlers.get(message_type)
+            if handler:
+                await handler(data)
             else:
-                logger.warning(
-                    f"Unknown message type received: {message_type}")
-                await self.send(text_data=json.dumps({
-                    'type': 'error',
-                    'message': 'Unknown message type'
-                }))
+                logger.warning(f"Unknown message type: {message_type}")
+                await self.send_error("Unknown message type")
 
         except Exception as e:
             logger.error(f"Error in receive: {str(e)}")
             logger.error(traceback.format_exc())
-            await self.send(text_data=json.dumps({
-                'type': 'error',
-                'message': f"Error processing request: {str(e)}"
-            }))
+            await self.send_error(f"Error processing request: {str(e)}")
 
-    async def handle_intent(self, data):
-        """Handle intent selection and initialization"""
+    async def handle_message(self, data: Dict[str, Any]):
+        """Process user message with state awareness"""
         try:
-            intent = data.get('intent')
-            order_id = data.get('order_id')
-            logger.info(f"Processing intent: {intent} for order: {order_id}")
-            conversation_id = data.get('uuid')
+            user_input = data.get('message')
 
-            # Reset message history for new intent
-            self.current_messages = []
-
-            logger.debug(f"Full intent data: {data}")
-
-            # Check if intent requires sensitive tools
-            is_sensitive = self.tool_manager.is_sensitive_tool(intent)
-            logger.debug(f"Intent sensitivity check: {is_sensitive}")
-
-            # Get conversation and order details
-            conversation, order = await self.db_ops.get_or_create_conversation(
-                conversation_id,
-                order_id
+            # Process message through flow manager
+            new_state, response = await self.flow_manager.process_message(
+                user_input,
+                self.conversation_state
             )
 
-            # Create initial message for intent
-            initial_message = HumanMessage(
-                content=f"I need help with {intent} for order #{order_id}."
-            )
-            self.current_messages = [initial_message]
+            # Update conversation state
+            self.conversation_state = new_state.state
 
-            # Store intent in conversation
-            conversation.current_intent = intent
-            await database_sync_to_async(conversation.save)()
+            # If we have a direct response, send it
+            if response:
+                await self.send_json({
+                    'type': 'agent_response',
+                    'message': response
+                })
+                return
 
-            # Get order details
-            order_details = await self.db_ops.get_order_details(order_id)
+            # If we're in active state, process through graph
+            if new_state.state == 'active':
+                conversation = await self.db_ops.get_or_create_conversation(
+                    self.conversation_id,
+                    new_state.order_id
+                )
 
-            # Add status check logging
-            order_details = await self.db_ops.get_order_details(order_id)
-            logger.debug(f"Order status: {order_details['status']}")
+                # Save user message
+                message = await self.db_ops.save_message(
+                    conversation=conversation,
+                    content_type='TE',
+                    is_from_user=True,
+                )
+                await self.db_ops.save_usertext(message, user_input)
 
-            # For modify_order intent, check status immediately
-            if intent == 'modify_order_quantity':
-                can_modify = order_details['status'] in [
-                    'Pending', 'Processing']
-                logger.info(
-                    f"Can modify order: {can_modify}, Message: {data}")
-                if not can_modify:
-                    await self.send(text_data=json.dumps({
-                        'type': 'error',
-                        'message': f"Cannot modify order in {order_details['status']} status. Only pending or processing orders can be modified."
-                    }))
-                    return
-
-            # Initialize graph with tool manager
-            config = GraphConfig(
-                llm=self.llm,
-                intent=intent,
-                order_details=order_details,
-                tool_manager=self.tool_manager,
-                conversation_id=conversation_id
-            )
-
-            graph_builder = GraphBuilder(config)
-            self.graph = graph_builder.build()
-
-            # Save the graph visualization
-            # output_path = await graph_builder.save_graph_visualization()
-            # print(f"Graph saved to: {output_path}")
-
-            # # Use the png_path as needed in your WebSocket communication
-            # relative_path = os.path.relpath(output_path, settings.MEDIA_ROOT)
-            # media_url = os.path.join(settings.MEDIA_URL, relative_path)
-
-            # await self.send(text_data=json.dumps({
-            #     'type': 'graph_visualization',
-            #     'url': media_url
-            # }))
-
-            # Save initial message
-            user_message = await self.db_ops.save_message(
-                conversation=conversation,
-                content_type='TE',
-                is_from_user=True
-            )
-            await self.db_ops.save_usertext(user_message, f"Request for {intent}")
-
-            # Initialize state
-            initial_state = {
-                "messages": self.current_messages,
-                "intent": intent,
-                "order_info": order_details,
-                "conversation_id": str(conversation.id),
-                "confirmation_pending": False,
-                "completed": False
-            }
-
-            logger.debug(f"Initial state: {initial_state}")
-
-            # Process through graph
-            async for event in self.graph.astream(initial_state, config=settings.GRAPH_CONFIG):
-                if event.get("error"):
-                    await self.send(text_data=json.dumps({
-                        'type': 'error',
-                        'message': event["error"]
-                    }))
-                    return
-
-                await self.process_graph_event(event, conversation, None)
+                # Process through graph
+                await self.process_message(
+                    conversation=conversation,
+                    user_input=user_input,
+                    order_id=new_state.order_id,
+                    intent=new_state.intent,
+                    order_info=new_state.order_info
+                )
 
         except Exception as e:
-            logger.error(f"Error in handle_intent: {str(e)}")
+            logger.error(f"Error handling message: {str(e)}")
             logger.error(traceback.format_exc())
-            await self.send(text_data=json.dumps({
-                'type': 'error',
-                'message': f"Error processing intent: {str(e)}"
-            }))
+            await self.send_error("Error processing your message")
 
-    async def handle_message(self, data):
-        """Handle ongoing conversation messages"""
+    async def process_message(self, conversation, user_input: str, order_id: str,
+                              intent: str, order_info: Dict):
+        """Process message through LangGraph with context"""
         try:
-            conversation = await database_sync_to_async(lambda: Conversation.objects.get(id=self.conversation_id))()
-            user_input = data.get('message')
-            order_id = data.get('order_id')
-
             # Get conversation history
-            conversation_history = await self.db_ops.get_conversation_history(self.conversation_id)
-            # Get order details
-            order_details = await self.db_ops.get_order_details(order_id)
-
-            # Add new message
-            self.current_messages = conversation_history + \
-                [HumanMessage(content=user_input)]
-
-            logger.info(
-                f"Processing message for order {order_id}: {user_input}")
-
-            # Save user message
-            user_message = await self.db_ops.save_message(
-                conversation=conversation,
-                content_type='TE',
-                is_from_user=True
+            conversation_history = await self.db_ops.get_conversation_history(
+                self.conversation_id
             )
-            await self.db_ops.save_usertext(user_message, user_input)
 
-            # Handle confirmation responses
-            if self.awaiting_confirmation and any(word in user_input.lower() for word in ['yes', 'confirm', 'proceed']):
-                if self.pending_tool_calls:
-                    await self.handle_confirmation({
-                        'approved': True,
-                        'tool_calls': self.pending_tool_calls
-                    })
-                    return
+            # Initialize graph with proper configuration
+            config = State(
+                llm='openai/gpt-4o-mini',
+                intent=intent,
+                order_details=order_info,
+                tool_manager=self.tools,
+                conversation_id=self.conversation_id
+            )
 
-            # Process message through graph
-            current_state = {
-                "messages": self.current_messages,
-                "order_info": order_details,
+            self.graph = create_customer_support_agent(config)
+
+            # Prepare state for graph
+            state = {
+                "messages": conversation_history + [HumanMessage(content=user_input)],
+                "order_info": order_info,
+                "intent": intent,
                 "conversation_id": self.conversation_id,
-                "intent": conversation.current_intent
+                "context": await self.context_manager.get_context(self.conversation_id)
             }
 
             # Process through graph
-            async for event in self.graph.astream(current_state, config=settings.GRAPH_CONFIG):
-                await self.process_graph_event(event, conversation, user_message)
+            async for event in self.graph.astream(state):
+                await self.handle_graph_event(event, conversation)
 
         except Exception as e:
             logger.error(f"Error processing message: {str(e)}")
             logger.error(traceback.format_exc())
-            await self.send(text_data=json.dumps({
-                'type': 'error',
-                'message': f"Error processing message: {str(e)}"
-            }))
+            await self.send_error("Error processing your request")
 
-    async def handle_confirmation(self, data):
-        """Handle tool confirmation responses"""
+    async def handle_initial_conversation(self, user_input: str, conversation_history: list):
+        """Handle initial conversation before order context"""
         try:
-            approved = data.get('approved')
-            tool_calls = data.get('tool_calls', [])
-            reason = data.get('reason', '')
-            logger.info(f"Tool calls: {tool_calls}")
+            # Check for order-related keywords
+            order_mentioned = await self.check_for_order_mention(user_input)
 
-            # Get conversation and order
-            conversation = await database_sync_to_async(lambda: Conversation.objects.get(id=self.conversation_id))()
+            if order_mentioned:
+                # Get user's recent orders
+                recent_orders = await self.db_ops.get_recent_orders(self.user_id)
 
-            # Get order_id
-            order_id = await self._get_order_id_from_conversation(conversation)
-            if not order_id:
-                raise ValueError(
-                    "Could not determine order ID for confirmation")
-
-            # Get order details
-            order_details = await self.db_ops.get_order_details(order_id)
-
-            if approved:
-                logger.info("User approved action, proceeding with tools")
-
-                # Execute the approved action
-                result = await self.execute_tool_action(tool_calls[0], order_details)
-
-                # Save result to conversation
-                ai_message = await self.db_ops.save_message(
-                    conversation=conversation,
-                    content_type='TE',
-                    is_from_user=False
-                )
-                await self.db_ops.save_aitext(
-                    ai_message,
-                    f"Action completed successfully: {result}",
-                    tool_calls=tool_calls
-                )
-
-                # Reset confirmation state
-                self.awaiting_confirmation = False
-                self.pending_tool_calls = None
-
-                # Update UI
-                await self.send(text_data=json.dumps({
-                    'type': 'operation_complete',
-                    'message': result,
-                    'update_elements': [{
-                        'selector': f'.card[data-order-id="{order_details["order_id"]}"]',
-                        'html': await self.db_ops.render_order_card(order_details)
-                    }],
-                    'completion_message': 'Order successfully updated!'
-                }))
-
+                if recent_orders:
+                    # Ask user to specify which order they want to discuss
+                    order_list = self.format_order_list(recent_orders)
+                    await self.send_json({
+                        'type': 'agent_response',
+                        'message': f"I see you'd like to discuss an order. Here are your recent orders:\n\n{order_list}\n\nWhich order would you like to discuss? You can refer to the order by its number."
+                    })
+                    self.conversation_state = 'awaiting_order_selection'
+                else:
+                    await self.send_json({
+                        'type': 'agent_response',
+                        'message': "I notice you'd like to discuss an order, but I don't see any recent orders in your account. Could you please provide an order number, or let me know if you need help with something else?"
+                    })
             else:
-                # Handle declined action
-                decline_message = f"Action declined by user. Reason: {reason}"
-
-                # Save decline message
-                ai_message = await self.db_ops.save_message(
-                    conversation=conversation,
-                    content_type='TE',
-                    is_from_user=False
-                )
-                await self.db_ops.save_aitext(ai_message, decline_message)
-
-                # Reset confirmation state
-                self.awaiting_confirmation = False
-                self.pending_tool_calls = None
-
-                # Send decline notification
-                await self.send(text_data=json.dumps({
+                # Handle general conversation
+                response = await self.handle_general_conversation(user_input)
+                await self.send_json({
                     'type': 'agent_response',
-                    'message': decline_message
-                }))
+                    'message': response
+                })
 
         except Exception as e:
-            logger.error(f"Error in handle_confirmation: {str(e)}")
-            logger.error(traceback.format_exc())
-            await self.send(text_data=json.dumps({
-                'type': 'error',
-                'message': f"Error processing confirmation: {str(e)}"
-            }))
+            logger.error(f"Error in initial conversation: {str(e)}")
+            await self.send_error("Error processing your message")
 
-    async def process_graph_event(self, event, conversation, user_message):
-        """Process events from the graph"""
+    async def check_for_order_mention(self, user_input: str) -> bool:
+        """Check if user's message mentions order-related terms"""
+        order_keywords = ['order', 'purchase', 'bought', 'delivery', 'tracking',
+                          'shipped', 'package', 'return', 'cancel']
+        return any(keyword in user_input.lower() for keyword in order_keywords)
+
+    def format_order_list(self, orders: list) -> str:
+        """Format the list of orders for display"""
+        formatted_orders = []
+        for order in orders:
+            formatted_orders.append(
+                f"Order #{order['id']} - Placed on {order['created_date']}\n"
+                f"Status: {order['status']}\n"
+                f"Items: {order['item_count']}\n"
+                f"Total: ${order['total_amount']}\n"
+            )
+        return "\n".join(formatted_orders)
+
+    async def handle_general_conversation(self, user_input: str) -> str:
+        """Handle general conversation before order context"""
+        greetings = ['hi', 'hello', 'hey', 'good morning',
+                     'good afternoon', 'good evening']
+
+        if any(greeting in user_input.lower() for greeting in greetings):
+            return ("Hello! I'm your order support assistant. I can help you with:\n"
+                    "- Checking order status and tracking\n"
+                    "- Modifying orders\n"
+                    "- Cancellations and returns\n"
+                    "- General order support\n\n"
+                    "Do you have a specific order you'd like to discuss?")
+
+        return ("I'm here to help with your orders! Would you like to:\n"
+                "1. Check a recent order\n"
+                "2. Track a shipment\n"
+                "3. Modify an order\n"
+                "4. Get help with something else\n\n"
+                "Just let me know what you need!")
+
+    async def handle_graph_event(self, event: Dict[str, Any], conversation: Any):
+        """Handle events from the graph execution"""
         try:
             if isinstance(event, dict):
-                logger.debug(f"Processing event: {event}")
-
                 messages = event.get("messages", [])
                 if not messages and "agent" in event:
                     messages = event["agent"].get("messages", [])
 
                 for message in messages:
-                    if not message or not isinstance(message, AIMessage):
+                    if not isinstance(message, AIMessage):
                         continue
 
-                    content = message.content
-                    logger.info(f"AI Message content: {content}")
-
-                    # Save the message
+                    # Save AI message
                     ai_message = await self.db_ops.save_message(
                         conversation=conversation,
                         content_type='TE',
-                        is_from_user=False,
-                        in_reply_to=user_message
+                        is_from_user=True,
                     )
-                    await self.db_ops.save_aitext(ai_message, content)
+                    await self.db_ops.save_aitext(
+                        ai_message,
+                        content=message.content,
+                        tool_calls=message.additional_kwargs.get(
+                            'tool_calls', [])
+                    )
 
-                    # Check if this is a confirmation request message
-                    if "confirm" in content.lower() and user_message:
-                        logger.info("Detected confirmation request")
-                        order_id = await self._get_order_id_from_conversation(conversation)
-                        new_quantity = await self.db_ops._extract_new_quantity(user_message.user_text.content)
-                        product_id = await self._get_product_id_from_conversation(conversation)
-
-                        if all([order_id, new_quantity, product_id]):
-                            tool_calls = [{
-                                'function': {
-                                    'name': 'modify_order_quantity',
-                                    'arguments': json.dumps({
-                                        'order_id': order_id,
-                                        'product_id': product_id,
-                                        'new_quantity': new_quantity
-                                    })
-                                }
-                            }]
-
-                            logger.info(
-                                f"Sending confirmation required with tool_calls: {tool_calls}")
-
-                            # Send confirmation dialog
-                            await self.send(text_data=json.dumps({
-                                'type': 'confirmation_required',
-                                'action': f"Please confirm that you want to change the quantity to {new_quantity} for Order #{order_id}",
-                                'tool_calls': tool_calls
-                            }))
-                            return
-
-                    # If not a confirmation request, send normal response
-                    await self.send(text_data=json.dumps({
-                        'type': 'agent_response',
-                        'message': content
-                    }))
+                    # Check for confirmation needs
+                    if self.needs_confirmation(message):
+                        await self.handle_confirmation_request(message, conversation)
+                    else:
+                        await self.send_json({
+                            'type': 'agent_response',
+                            'message': message.content
+                        })
 
         except Exception as e:
-            logger.error(f"Error in process_graph_event: {str(e)}")
+            logger.error(f"Error handling graph event: {str(e)}")
             logger.error(traceback.format_exc())
-            await self.send(text_data=json.dumps({
-                'type': 'error',
-                'message': f"Error processing response: {str(e)}"
-            }))
+            await self.send_error("Error processing response")
 
-    async def _get_product_id_from_conversation(self, conversation) -> Optional[str]:
-        """Get product ID from the first order item"""
+    async def handle_confirmation_request(self, message: AIMessage, conversation: Any):
+        """Handle requests requiring user confirmation"""
         try:
-            @database_sync_to_async
-            def get_product_id():
-                order_link = conversation.order_links.select_related(
-                    'order').first()
-                if order_link and order_link.order.items.exists():
-                    first_item = order_link.order.items.select_related(
-                        'product').first()
-                    return str(first_item.product.id) if first_item else None
-                return None
+            tool_calls = message.additional_kwargs.get('tool_calls', [])
+            if not tool_calls:
+                return
 
-            product_id = await get_product_id()
-            logger.info(f"Retrieved product ID: {product_id}")
-            return product_id
+            tool_call = tool_calls[0]
+            args = json.loads(tool_call['function']['arguments'])
+
+            # Format confirmation message
+            confirmation_message = self.format_confirmation_message(
+                tool_call['function']['name'],
+                args
+            )
+
+            await self.send_json({
+                'type': 'confirmation_required',
+                'message': confirmation_message,
+                'tool_calls': tool_calls
+            })
 
         except Exception as e:
-            logger.error(f"Error getting product ID: {str(e)}")
-            return None
+            logger.error(f"Error handling confirmation request: {str(e)}")
+            logger.error(traceback.format_exc())
+            await self.send_error("Error processing confirmation request")
 
-    async def _get_order_id_from_conversation(self, conversation) -> Optional[str]:
-        """Get order ID from conversation link"""
+    async def handle_confirmation(self, data: Dict[str, Any]):
+        """Handle tool confirmation responses"""
         try:
-            @database_sync_to_async
-            def get_order_id():
-                order_link = conversation.order_links.select_related(
-                    'order').first()
-                return str(order_link.order.id) if order_link else None
+            approved = data.get('approved')
+            tool_calls = data.get('tool_calls', [])
+            reason = data.get('reason', '')
 
-            order_id = await get_order_id()
-            logger.info(f"Retrieved order ID: {order_id}")
-            return order_id
+            if not tool_calls:
+                await self.send_error("No tool calls provided for confirmation")
+                return
+
+            # Execute confirmed tool action
+            tool_call = tool_calls[0]
+            if approved:
+                result = await self.execute_tool_action(tool_call)
+                if result:
+                    await self.send_json({
+                        'type': 'operation_complete',
+                        'message': result
+                    })
+            else:
+                await self.send_json({
+                    'type': 'agent_response',
+                    'message': f"Action declined. Reason: {reason}"
+                })
 
         except Exception as e:
-            logger.error(f"Error getting order ID: {str(e)}")
+            logger.error(f"Error handling confirmation: {str(e)}")
+            logger.error(traceback.format_exc())
+            await self.send_error("Error processing confirmation")
 
-    async def execute_tool_action(self, tool_call, order_details):
-        """Execute approved tool actions"""
+    async def execute_tool_action(self, tool_call: Dict[str, Any]) -> Optional[str]:
+        """Execute confirmed tool action"""
         try:
-            if not tool_call or not isinstance(tool_call, dict):
-                raise ValueError("Invalid tool call format")
-
             function_info = tool_call.get('function', {})
             tool_name = function_info.get('name')
+            tool_args = json.loads(function_info.get('arguments', '{}'))
 
-            if not tool_name:
-                raise ValueError("Tool name not found in tool call")
-
-            # Parse arguments
-            tool_args = self.parse_tool_arguments(
-                function_info.get('arguments', '{}'))
-
-            logger.info(f"Executing tool: {tool_name} with args: {tool_args}")
-
-            # Get tool from manager
-            tool = self.get_tool_from_manager(tool_name)
+            # Get tool from available tools
+            tool = next((t for t in self.tools if t.name == tool_name), None)
             if not tool:
-                raise ValueError(f"Unknown tool: {tool_name}")
-
-            # Construct tool input
-            tool_input = await self.construct_tool_input(tool_name, tool_args)
+                return f"Tool {tool_name} not found"
 
             # Execute tool
-            result = await tool.ainvoke(tool_input)
-            logger.info(f"Tool execution result: {result}")
+            result = await tool.ainvoke({**tool_args, 'db_ops': self.db_ops})
             return result
 
         except Exception as e:
             logger.error(f"Error executing tool action: {str(e)}")
             logger.error(traceback.format_exc())
-            raise
+            return None
 
-    def parse_tool_arguments(self, args_str):
-        """Parse tool arguments from string or dict format"""
-        try:
-            if isinstance(args_str, str):
-                return json.loads(args_str)
-            return args_str
-        except json.JSONDecodeError as e:
-            logger.error(f"Error parsing tool arguments: {e}")
-            logger.error(traceback.format_exc())
-            raise ValueError(f"Invalid tool arguments format: {e}")
+    @staticmethod
+    def needs_confirmation(message: AIMessage) -> bool:
+        """Determine if a message needs user confirmation"""
+        if not message.additional_kwargs.get('tool_calls'):
+            return False
 
-    def get_tool_from_manager(self, tool_name: str):
-        """Get tool instance from tool manager"""
-        all_tools = self.tool_manager.get_all_tools()
-        return next((t for t in all_tools if t.name == tool_name), None)
+        tool_name = message.additional_kwargs['tool_calls'][0]['function']['name']
+        return tool_name in {'modify_order_quantity', 'cancel_order'}
 
-    async def construct_tool_input(self, tool_name: str, tool_args: dict) -> dict:
-        """Construct appropriate input for each tool type"""
-        if tool_name == 'modify_order_quantity':
-            # Validate order status before modification
-            can_modify, message = await self.db_ops.validate_order_status_for_modification(
-                tool_args.get('order_id')
+    def format_confirmation_message(self, tool_name: str, args: Dict[str, Any]) -> str:
+        """Format confirmation message based on tool and arguments"""
+        templates = {
+            'modify_order_quantity': (
+                f"Please confirm that you want to change the quantity to "
+                f"{args.get('new_quantity')} for Order #{args.get('order_id')}"
+            ),
+            'cancel_order': (
+                f"Please confirm that you want to cancel Order #{args.get('order_id')}. "
+                f"Reason: {args.get('reason', 'No reason provided')}"
             )
-            logger.debug(f"Can modify order: {can_modify}")
-            if not can_modify:
-                await self.send(text_data=json.dumps({
-                    'type': 'error',
-                    'message': f"Cannot modify order. Only pending or processing orders can be modified."
-                }))
-                return
+        }
+        return templates.get(
+            tool_name,
+            f"Please confirm this action: {tool_name} with {args}"
+        )
 
-            return {
-                'order_id': str(tool_args.get('order_id')),
-                'customer_id': str(tool_args.get('customer_id')),
-                'product_id': int(tool_args.get('product_id')),
-                'new_quantity': int(tool_args.get('new_quantity'))
-            }
+    async def send_json(self, data: Dict[str, Any]):
+        """Send JSON response to WebSocket"""
+        await self.send(text_data=json.dumps(data))
 
-        elif tool_name == 'track_order':
-            return {
-                'order_id': str(tool_args.get('order_id')),
-                'customer_id': str(tool_args.get('customer_id')),
-                'include_history': bool(tool_args.get('include_history', False))
-            }
-
-        elif tool_name == 'get_tracking_details':
-            return {
-                'order_id': str(tool_args.get('order_id')),
-                'customer_id': str(tool_args.get('customer_id')),
-                'include_history': bool(tool_args.get('include_history', True))
-            }
-
-        elif tool_name == 'get_shipment_location':
-            return {
-                'order_id': str(tool_args.get('order_id')),
-                'customer_id': str(tool_args.get('customer_id'))
-            }
-
-        elif tool_name == 'get_delivery_estimate':
-            return {
-                'order_id': str(tool_args.get('order_id')),
-                'customer_id': str(tool_args.get('customer_id'))
-            }
-
-        elif tool_name == 'cancel_order':
-            return {
-                'order_id': str(tool_args.get('order_id')),
-                'customer_id': str(tool_args.get('customer_id')),
-                'reason': tool_args.get('reason', 'User requested cancellation')
-            }
-
-        else:
-            raise ValueError(f"Unknown tool operation: {tool_name}")
+    async def send_error(self, message: str):
+        """Send error message to WebSocket"""
+        await self.send_json({
+            'type': 'error',
+            'message': message
+        })

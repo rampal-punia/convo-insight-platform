@@ -3,5 +3,5 @@ from . import consumers
 
 websocket_urlpatterns = [
     re_path(
-        r'ws/customer_support/(?P<conversation_id>[^/]+)?/$', consumers.CustomerSupportConsumer.as_asgi()),
+        r'ws/support_agent/(?P<conversation_id>[^/]+)?/$', consumers.SupportAgentConsumer.as_asgi()),
 ]

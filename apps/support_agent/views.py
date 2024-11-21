@@ -1,3 +1,8 @@
-from django.shortcuts import render
+from django.views.generic import TemplateView
+from django.urls import reverse_lazy
 
-# Create your views here.
+from django.contrib.auth.mixins import LoginRequiredMixin
+
+
+class SupportAgentTemplateView(LoginRequiredMixin, TemplateView):
+    template_name = 'support_agent/support_agent_chat.html'
