@@ -33,13 +33,20 @@ class IntentRouter:
     INTENT_PATTERNS = {
         'track_order': [
             'where is my order',
-            'track',
+            'track order',
+            'track package',
             'shipping status',
             'delivery status',
             'when will it arrive',
             'package location',
             'delivery time',
-            'shipping update'
+            'shipping update',
+            'order location',
+            'track shipment',
+            'check delivery',
+            'delivery progress',
+            'order tracking',
+            'shipping information'
         ],
         'modify_order_quantity': [
             'change quantity',
@@ -49,7 +56,13 @@ class IntentRouter:
             'order quantity',
             'increase quantity',
             'decrease quantity',
-            'reduce amount'
+            'reduce amount',
+            'add more items',
+            'remove items',
+            'adjust quantity',
+            'change number of items',
+            'modify item count',
+            'update item quantity'
         ],
         'cancel_order': [
             'cancel order',
@@ -131,47 +144,70 @@ class IntentRouter:
         user_input: str,
         context: Dict[str, Any]
     ) -> IntentScore:
-        """
-        Detect intent from user input using multiple detection methods.
-
-        Args:
-            user_input: The user's message
-            context: Current conversation context including history
-
-        Returns:
-            IntentScore object containing detected intent and confidence
-        """
+        """Detect intent with improved context awareness"""
         try:
-            # First try rule-based pattern matching
+            # Get current intent from context
+            current_intent = context.get('current_intent')
+
+            # Try rule-based detection first
             rule_based_result = self._rule_based_detection(user_input.lower())
+
+            # If we have a strong rule-based match, use it
             if rule_based_result and rule_based_result.confidence > 0.8:
-                logger.debug(
-                    f"High confidence rule-based intent detected: {rule_based_result.intent}")
+                # Check if intent transition is valid
+                if current_intent and current_intent != rule_based_result.intent:
+                    if not await self.validate_intent_transition(
+                        current_intent,
+                        rule_based_result.intent,
+                        context
+                    ):
+                        # If transition isn't valid, stick with current intent
+                        return IntentScore(
+                            intent=current_intent,
+                            confidence=0.7,
+                            entities=self._extract_entities(
+                                user_input, current_intent, context)
+                        )
                 return rule_based_result
 
-            # Use LLM for more nuanced intent detection
+            # If we have a current intent and no strong new match,
+            # try to interpret within current intent
+            if current_intent and not rule_based_result:
+                current_intent_score = self._score_for_current_intent(
+                    user_input, current_intent, context)
+                if current_intent_score.confidence > 0.5:
+                    return current_intent_score
+
+            # Use LLM for more nuanced detection
             llm_result = await self._llm_based_detection(user_input, context)
             if llm_result:
-                logger.debug(
-                    f"LLM-based intent detected: {llm_result.intent}")
-                # Combine results if we have both
                 if rule_based_result:
                     return self._combine_intent_results(
                         rule_based_result, llm_result)
                 return llm_result
 
-            # Fall back to rule-based result or default
-            return rule_based_result if rule_based_result else IntentScore(
-                intent=self.default_intent,
-                confidence=0.5
+            # Fall back to rule-based or default
+            if rule_based_result:
+                return rule_based_result
+
+            # Default to current intent or order_detail
+            return IntentScore(
+                intent=current_intent or 'order_detail',
+                confidence=0.5,
+                entities=self._extract_entities(
+                    user_input,
+                    current_intent or 'order_detail',
+                    context
+                )
             )
 
         except Exception as e:
             logger.error(f"Error in intent detection: {str(e)}")
-            logger.error(traceback.format_exc())
             return IntentScore(
-                intent=self.default_intent,
-                confidence=0.5
+                intent='order_detail',
+                confidence=0.5,
+                entities=self._extract_entities(
+                    user_input, 'order_detail', context)
             )
 
     def _rule_based_detection(self, user_input: str) -> Optional[IntentScore]:
@@ -359,39 +395,70 @@ class IntentRouter:
         # If different intents, use the one with higher confidence
         return rule_result if rule_result.confidence > llm_result.confidence else llm_result
 
-    def _extract_entities(
-        self,
-        user_input: str,
-        intent: str
-    ) -> Dict[str, Any]:
-        """
-        Extract relevant entities based on intent.
-
-        Args:
-            user_input: User's message
-            intent: Detected intent
-
-        Returns:
-            Dictionary of extracted entities
-        """
+    def _extract_entities(self, user_input: str, intent: str, context: Dict = None) -> Dict[str, Any]:
+        """Extract and consolidate all relevant entities with context awareness"""
         entities = {}
+        context = context or {}
 
-        # Extract order IDs
-        order_matches = re.findall(r'order\s*#?\s*(\d+)', user_input.lower())
-        if order_matches:
-            entities['order_id'] = order_matches[0]
+        # First check if we have entities in context
+        stored_entities = context.get('extracted_entities', {})
+
+        # Extract order IDs with comprehensive patterns
+        order_patterns = [
+            r'order\s*#?\s*(\d+)',
+            r'#\s*(\d+)',
+            r'number\s*(\d+)',
+            r'^(\d+)$',
+            r'order\s+id\s*:\s*(\d+)',
+            r'orderid\s*:\s*(\d+)',
+            r'order\s+(\d+)',
+        ]
+
+        # Try to extract order ID or use from context
+        order_id = stored_entities.get('order_id')
+        if not order_id:
+            for pattern in order_patterns:
+                match = re.search(pattern, user_input.lower())
+                if match:
+                    order_id = match.group(1)
+                    break
+
+        if order_id:
+            entities['order_id'] = order_id
 
         # Extract quantities for modification intents
         if intent == 'modify_order_quantity':
-            quantity_matches = re.findall(
-                r'(\d+)\s*(?:items?|pieces?|qty)', user_input.lower())
-            if quantity_matches:
-                entities['quantity'] = int(quantity_matches[0])
+            quantity = stored_entities.get('quantity')
+            if not quantity:
+                quantity_matches = re.findall(
+                    r'(\d+)\s*(?:items?|pieces?|qty)',
+                    user_input.lower()
+                )
+                if quantity_matches:
+                    quantity = int(quantity_matches[0])
+            if quantity:
+                entities['quantity'] = quantity
 
-        # Extract dates for tracking intents
-        if intent in ['track_order', 'delivery_issue']:
-            # Add date extraction logic here
-            pass
+        # Extract dates or use from context
+        date = stored_entities.get('date')
+        if not date:
+            date_patterns = [
+                r'(\d{1,2}/\d{1,2}/\d{2,4})',  # MM/DD/YYYY
+                r'(\d{4}-\d{1,2}-\d{1,2})',     # YYYY-MM-DD
+            ]
+            for pattern in date_patterns:
+                match = re.search(pattern, user_input)
+                if match:
+                    date = match.group(1)
+                    break
+        if date:
+            entities['date'] = date
+
+        # Merge with existing entities from context while prioritizing new ones
+        if stored_entities:
+            for key, value in stored_entities.items():
+                if key not in entities:  # Don't overwrite new entities
+                    entities[key] = value
 
         return entities
 
@@ -436,3 +503,31 @@ class IntentRouter:
         confidence_threshold = 0.8
         result = await self.detect_intent(context.get('last_message', ''), context)
         return result.confidence >= confidence_threshold
+
+    def _score_for_current_intent(
+        self,
+        user_input: str,
+        current_intent: str,
+        context: Dict[str, Any]
+    ) -> IntentScore:
+        """Score how well the input fits the current intent"""
+        # Add specific scoring logic for each intent
+        if current_intent == 'modify_order_quantity':
+            quantity_match = re.search(
+                r'(\d+)\s*(?:items?|pieces?|qty|to\s+(\d+))',
+                user_input.lower()
+            )
+            if quantity_match:
+                return IntentScore(
+                    intent=current_intent,
+                    confidence=0.8,
+                    entities={'quantity': quantity_match.group(1)}
+                )
+
+        # Add similar logic for other intents
+        return IntentScore(
+            intent=current_intent,
+            confidence=0.6,
+            entities=self._extract_entities(
+                user_input, current_intent, context)
+        )

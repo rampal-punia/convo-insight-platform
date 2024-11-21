@@ -6,19 +6,18 @@ using the official LangGraph implementation patterns.
 import logging
 import traceback
 from datetime import datetime, timezone
-from typing import Dict, List, Literal, TypedDict, cast
-from dataclasses import dataclass
+from typing import Dict, List, Literal, TypedDict, Any
+import json
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph, add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 from typing_extensions import Annotated
-
+from .context_manager import CustomJSONEncoder
 from .configuration import Configuration
 from .prompt_manager import PromptManager
-from .tool_manager import TOOLS, get_sensitive_tool_names
+from .tool_manager import get_sensitive_tool_names, get_all_tools
 from .helper import load_chat_model
 
 logger = logging.getLogger('orders')
@@ -32,6 +31,7 @@ class State(TypedDict):
     conversation_id: str
     confirmation_pending: bool
     completed: bool
+    context: Dict[str, Any]  # Add context field to maintain additional state
 
 
 class Assistant:
@@ -48,32 +48,65 @@ class Assistant:
             logger.info(f"Intent is {intent}")
             logger.info(f"state is {state}")
             order_info = state.get('order_info', {})
+            context = state.get('context', {})
+
+            # For order_detail intent, format response directly
+            if intent == 'order_detail' and order_info:
+                return {
+                    "messages": [
+                        AIMessage(
+                            content=self._format_order_details(order_info))
+                    ]
+                }
 
             # Get appropriate prompt template
             prompt = PromptManager.get_prompt(intent)
+            logger.info(f"Generated prompt: {prompt}")
 
             # Format the system prompt with context
             formatted_prompt = prompt.format(
-                order_info=order_info,
+                order_info=json.dumps(
+                    order_info, indent=2, cls=CustomJSONEncoder),
                 conversation_history=self._format_history(
                     state['messages'][:-1]),
                 user_input=state['messages'][-1].content,
-                system_time=datetime.now(tz=timezone.utc).isoformat()
+                system_time=datetime.now(tz=timezone.utc).isoformat(),
+                context=json.dumps(context, indent=2)
             )
 
             # Get model response
+            messages = [
+                {"role": "system", "content": formatted_prompt},
+                {"role": "system",
+                    "content": f"Current order context: {json.dumps(order_info, indent=2, cls=CustomJSONEncoder)}"},
+                *state['messages']
+            ]
+
+            # Get model response with validation loop
             while True:
-                result = await self.runnable.ainvoke(
-                    [{"role": "system", "content": formatted_prompt},
-                        *state['messages']]
-                )
+                result = await self.runnable.ainvoke(messages)
 
                 # Validate response
-                if not result.tool_calls and (not result.content or
-                                              isinstance(result.content, list) and not result.content[0].get("text")):
-                    state['messages'].append(HumanMessage(
-                        content="Please provide a clear response."))
+                if not result.tool_calls and (
+                    not result.content or
+                    isinstance(result.content,
+                               list) and not result.content[0].get("text")
+                ):
+                    logger.warning("Invalid response from LLM, retrying...")
+                    messages.append(HumanMessage(
+                        content="Please provide a clear response with proper context awareness."
+                    ))
                     continue
+
+                # Additional validation for context preservation
+                if order_info and not self._validates_order_context(result):
+                    logger.warning(
+                        "Response missing order context, reinforcing...")
+                    messages.append(HumanMessage(
+                        content="Please ensure your response acknowledges the current order context."
+                    ))
+                    continue
+
                 break
 
             return {"messages": [result]}
@@ -84,9 +117,59 @@ class Assistant:
             return {
                 "messages": [
                     AIMessage(
-                        content="I encountered an error processing your request. Please try again.")
+                        content="I encountered an error processing your request. Please try again."
+                    )
                 ]
             }
+
+    def _validates_order_context(self, result: AIMessage) -> bool:
+        """
+        Validate that the response maintains awareness of order context.
+        This is a basic check that can be enhanced based on your specific needs.
+        """
+        if not hasattr(result, 'content'):
+            return False
+
+        content = result.content.lower()
+
+        # Check for common order-related terms
+        context_indicators = [
+            'order', 'item', 'purchase', 'delivery',
+            'tracking', 'status', 'shipping'
+        ]
+
+        # If using tool calls, those are also valid responses
+        if hasattr(result, 'tool_calls') and result.tool_calls:
+            return True
+
+        return any(indicator in content for indicator in context_indicators)
+
+    def _format_order_details(self, order_info: Dict) -> str:
+        """Format order details into a readable message."""
+        try:
+            items_str = "\n".join([
+                f"• {item['product_name']} (Quantity: {item['quantity']}, Price: ${item['price']})"
+                for item in order_info.get('items', [])
+            ])
+
+            return f"""
+Here are the details for Order #{order_info.get('order_id')}:
+
+Status: {order_info.get('status')}
+
+Items:
+{items_str}
+
+Total Amount: ${order_info.get('total_amount')}
+
+You can ask me to:
+• Track this order
+• Modify quantities (if order is pending/processing)
+• Cancel the order (if eligible)
+"""
+        except Exception as e:
+            logger.error(f"Error formatting order details: {str(e)}")
+            return "I'm having trouble formatting the order details. Please try again."
 
     def _format_history(self, messages: List[AnyMessage], max_messages: int = 5) -> str:
         """Format the conversation history."""
@@ -105,60 +188,90 @@ class Assistant:
         return "\n".join(formatted)
 
 
-def create_customer_support_agent(config: Configuration):
+def create_customer_support_agent(config: Dict[str, Any]):
     """Create and configure the order support agent."""
+    try:
+        # Initialize LLM with tools
+        model = load_chat_model(config['llm'])
+        logger.info(f"Loaded chat model: {config['llm']}")
 
-    # Initialize LLM with tools
-    model = load_chat_model(config['llm']).bind_tools(TOOLS)
-    sensitive_tools = get_sensitive_tool_names()
+        # Log available tools
+        tools = get_all_tools()
+        logger.info(f"Available tools: {[t.name for t in tools]}")
 
-    # Create assistant with prompt template
-    assistant = Assistant(model)
+        # Bind tools to model
+        bound_model = model.bind_tools(tools)
+        logger.info(f"Bound {len(tools)} tools to model")
 
-    # Initialize graph
-    builder = StateGraph(State)
+        # Create assistant
+        assistant = Assistant(bound_model)
 
-    # Add nodes
-    builder.add_node("assistant", assistant)
-    builder.add_node("safe_tools", ToolNode([t for t in TOOLS
-                                             if t.name not in sensitive_tools]))
-    builder.add_node("sensitive_tools", ToolNode([t for t in TOOLS
-                                                  if t.name in sensitive_tools]))
+        # Initialize graph
+        builder = StateGraph(State)
 
-    # Add edges
-    builder.add_edge("__start__", "assistant")
+        # Add nodes
+        builder.add_node("assistant", assistant)
 
-    # Route based on tool sensitivity
-    def route_tools(state: State) -> Literal["safe_tools", "sensitive_tools", "__end__"]:
-        """Route to appropriate tool node based on tool sensitivity."""
-        next_node = tools_condition(state)
-        if next_node == "__end__":
-            return "__end__"
+        safe_tools = [
+            t for t in tools if t.name not in get_sensitive_tool_names()]
+        sensitive_tools = [
+            t for t in tools if t.name in get_sensitive_tool_names()]
 
-        ai_message = state["messages"][-1]
-        if not hasattr(ai_message, 'tool_calls') or not ai_message.tool_calls:
-            return "__end__"
+        builder.add_node("safe_tools", ToolNode(safe_tools))
+        builder.add_node("sensitive_tools", ToolNode(sensitive_tools))
 
-        tool_name = ai_message.tool_calls[0]["name"]
-        return "sensitive_tools" if tool_name in get_sensitive_tool_names else "safe_tools"
+        logger.info(
+            f"Created nodes with {len(safe_tools)} safe tools and {len(sensitive_tools)} sensitive tools")
 
-    # Add conditional edges
-    builder.add_conditional_edges(
-        "assistant",
-        route_tools,
-        {
-            "safe_tools": "safe_tools",
-            "sensitive_tools": "sensitive_tools",
-            "__end__": "__end__"
-        }
-    )
+        # Add basic edge from start to assistant
+        builder.add_edge("__start__", "assistant")
 
-    # Add return edges to assistant
-    builder.add_edge("safe_tools", "assistant")
-    builder.add_edge("sensitive_tools", "assistant")
+        def route_tools(state: State) -> Literal["safe_tools", "sensitive_tools", "__end__"]:
+            """Route to appropriate tool node or end based on intent and message"""
+            logger.info(f"Routing with intent: {state.get('intent')}")
 
-    # Compile graph with interrupts for sensitive tools
-    return builder.compile(interrupt_before=["sensitive_tools"])
+            # For order_detail intent, we don't need tools
+            if state.get('intent') == 'order_detail':
+                logger.info("Order detail intent - no tools needed")
+                return "__end__"
+
+            # For other intents, check for tool calls
+            next_node = tools_condition(state)
+            if next_node == "__end__":
+                return "__end__"
+
+            ai_message = state["messages"][-1]
+            if not hasattr(ai_message, 'tool_calls') or not ai_message.tool_calls:
+                logger.info("No tool calls in message, ending")
+                return "__end__"
+
+            tool_name = ai_message.tool_calls[0]["name"]
+            logger.info(
+                f"Routing to {'sensitive_tools' if tool_name in get_sensitive_tool_names() else 'safe_tools'} for tool: {tool_name}")
+            return "sensitive_tools" if tool_name in get_sensitive_tool_names() else "safe_tools"
+
+        # Add conditional edges
+        builder.add_conditional_edges(
+            "assistant",
+            route_tools,
+            {
+                "safe_tools": "safe_tools",
+                "sensitive_tools": "sensitive_tools",
+                "__end__": "__end__"
+            }
+        )
+
+        # Add return edges
+        builder.add_edge("safe_tools", "assistant")
+        builder.add_edge("sensitive_tools", "assistant")
+
+        logger.info("Graph creation complete")
+        return builder.compile(interrupt_before=["sensitive_tools"])
+
+    except Exception as e:
+        logger.error(f"Error creating support agent: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise
 
 
 async def run_order_support(

@@ -8,9 +8,10 @@ with dynamic intent detection and contextual conversation management.
 import json
 import logging
 import traceback
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 from channels.generic.websocket import AsyncWebsocketConsumer
-
+from django.conf import settings
 from langchain_core.messages import AIMessage, HumanMessage
 from .sa_utils.flow_manager import ConversationFlowManager
 from .sa_utils.intent_router import IntentRouter
@@ -63,7 +64,9 @@ class SupportAgentConsumer(AsyncWebsocketConsumer):
             self.tools = get_all_tools()
             self.context_manager = ConversationContextManager(self.db_ops)
             self.intent_router = IntentRouter()
+            self.username_cap = self.user.username.capitalize()
             self.flow_manager = ConversationFlowManager(
+                self.username_cap,
                 self.user_id,
                 self.conversation_id,
                 self.db_ops,
@@ -71,12 +74,29 @@ class SupportAgentConsumer(AsyncWebsocketConsumer):
                 self.intent_router
             )
 
+            # Initialize state with basic information
+            initial_state = {
+                'current_intent': 'initial',
+                'last_message_time': datetime.now(timezone.utc),
+                'conversation_metrics': {
+                    'total_messages': 0,
+                    'user_messages': 0,
+                    'ai_messages': 0,
+                    'intent_changes': 0
+                }
+            }
+
+            await self.context_manager.update_context(
+                self.conversation_id,
+                initial_state
+            )
+
             await self.accept()
 
             # Send welcome message
             await self.send_json({
                 'type': 'welcome',
-                'message': f"Welcome, {self.user}! How can I assist you with your order today?"
+                'message': f"Welcome, {self.username_cap}! How can I assist you with your order today?"
             })
 
         except Exception as e:
@@ -129,12 +149,16 @@ class SupportAgentConsumer(AsyncWebsocketConsumer):
         """Process user message with state awareness"""
         try:
             user_input = data.get('message')
+            logger.info(f"Received user input: {user_input}")  # Add logging
 
             # Process message through flow manager
             new_state, response = await self.flow_manager.process_message(
                 user_input,
                 self.conversation_state
             )
+
+            logger.info(
+                f"Flow manager returned state: {new_state.state}, has_response: {response is not None}")
 
             # Update conversation state
             self.conversation_state = new_state.state
@@ -149,27 +173,37 @@ class SupportAgentConsumer(AsyncWebsocketConsumer):
 
             # If we're in active state, process through graph
             if new_state.state == 'active':
-                conversation = await self.db_ops.get_or_create_conversation(
+                logger.info(
+                    f"Processing through graph. Intent: {new_state.intent}, Order ID: {new_state.order_id}")
+
+                conversation, order = await self.db_ops.get_or_create_conversation(
                     self.conversation_id,
                     new_state.order_id
                 )
 
+                if not conversation:
+                    raise ValueError("Failed to create conversation")
+
                 # Save user message
                 message = await self.db_ops.save_message(
-                    conversation=conversation,
+                    conversation_id=self.conversation_id,
                     content_type='TE',
                     is_from_user=True,
                 )
-                await self.db_ops.save_usertext(message, user_input)
 
-                # Process through graph
-                await self.process_message(
-                    conversation=conversation,
-                    user_input=user_input,
-                    order_id=new_state.order_id,
-                    intent=new_state.intent,
-                    order_info=new_state.order_info
-                )
+                if message:
+                    await self.db_ops.save_usertext(message, user_input)
+
+                    # Process through graph
+                    await self.process_message(
+                        conversation=conversation,
+                        user_input=user_input,
+                        order_id=new_state.order_id,
+                        intent=new_state.intent,
+                        order_info=new_state.order_info
+                    )
+                else:
+                    raise ValueError("Failed to save message")
 
         except Exception as e:
             logger.error(f"Error handling message: {str(e)}")
@@ -180,39 +214,130 @@ class SupportAgentConsumer(AsyncWebsocketConsumer):
                               intent: str, order_info: Dict):
         """Process message through LangGraph with context"""
         try:
+            logger.info(
+                f"Processing message. Intent: {intent}, Order ID: {order_id}")
+
             # Get conversation history
             conversation_history = await self.db_ops.get_conversation_history(
                 self.conversation_id
             )
 
-            # Initialize graph with proper configuration
-            config = State(
-                llm='openai/gpt-4o-mini',
-                intent=intent,
-                order_details=order_info,
-                tool_manager=self.tools,
-                conversation_id=self.conversation_id
-            )
-
-            self.graph = create_customer_support_agent(config)
-
-            # Prepare state for graph
-            state = {
+            # Prepare message state
+            messages_state = {
                 "messages": conversation_history + [HumanMessage(content=user_input)],
                 "order_info": order_info,
                 "intent": intent,
                 "conversation_id": self.conversation_id,
-                "context": await self.context_manager.get_context(self.conversation_id)
+                "confirmation_pending": False,
+                "completed": False,
+                "context": {
+                    "order_id": order_id,
+                    "current_intent": intent,
+                    "last_action": None
+                }
             }
 
-            # Process through graph
-            async for event in self.graph.astream(state):
-                await self.handle_graph_event(event, conversation)
+            # Initialize graph with State class if needed
+            if not self.graph:
+                config = {
+                    "llm": settings.GPT_MINI_STRING,
+                    "intent": intent,
+                    "order_details": order_info,
+                    "tool_manager": self.tools,
+                    "conversation_id": self.conversation_id
+                }
+                self.graph = create_customer_support_agent(config)
+                logger.info("Created new graph instance")
+
+            logger.info(f"Processing with state: {messages_state}")
+
+            try:
+                # Process through graph
+                async for event in self.graph.astream(messages_state):
+                    logger.info(f"Received graph event: {event}")
+                    await self.handle_graph_event(event, conversation)
+
+            except Exception as e:
+                logger.error(f"Error in graph processing: {str(e)}")
+                logger.error(traceback.format_exc())
+                await self.send_json({
+                    'type': 'error',
+                    'message': "I'm having trouble processing your request. Please try again."
+                })
+                # Hide loading spinner
+                await self.send_json({
+                    'type': 'processing_complete'
+                })
 
         except Exception as e:
             logger.error(f"Error processing message: {str(e)}")
             logger.error(traceback.format_exc())
-            await self.send_error("Error processing your request")
+            await self.send_json({
+                'type': 'error',
+                'message': "Error processing your message"
+            })
+            # Hide loading spinner
+            await self.send_json({
+                'type': 'processing_complete'
+            })
+
+    async def handle_graph_event(self, event: Dict[str, Any], conversation: Any):
+        """Handle events from the graph execution"""
+        try:
+            messages = []
+            if isinstance(event, dict):
+                # Check for messages in different possible locations
+                if 'messages' in event:
+                    messages = event['messages']
+                elif 'assistant' in event and 'messages' in event['assistant']:
+                    messages = event['assistant']['messages']
+
+            logger.info(f"Processing messages from event: {messages}")
+
+            for message in messages:
+                if not isinstance(message, AIMessage):
+                    continue
+
+                logger.info(f"Processing AI message: {message.content}")
+                if hasattr(message, 'tool_calls'):
+                    logger.info(f"Tool calls present: {message.tool_calls}")
+
+                # Save AI message
+                ai_message = await self.db_ops.save_message(
+                    conversation_id=self.conversation_id,
+                    content_type='TE',
+                    is_from_user=False,
+                )
+
+                await self.db_ops.save_aitext(
+                    ai_message,
+                    content=message.content,
+                    tool_calls=message.additional_kwargs.get('tool_calls', [])
+                )
+
+                # Check for confirmation needs
+                if self.needs_confirmation(message):
+                    logger.info("Confirmation needed for message")
+                    await self.handle_confirmation_request(message, conversation)
+                else:
+                    await self.send_json({
+                        'type': 'agent_response',
+                        'message': message.content
+                    })
+
+            # Always hide spinner after processing
+            await self.send_json({
+                'type': 'processing_complete'
+            })
+
+        except Exception as e:
+            logger.error(f"Error handling graph event: {str(e)}")
+            logger.error(traceback.format_exc())
+            await self.send_error("Error processing response")
+            # Ensure spinner is hidden even on error
+            await self.send_json({
+                'type': 'processing_complete'
+            })
 
     async def handle_initial_conversation(self, user_input: str, conversation_history: list):
         """Handle initial conversation before order context"""
@@ -286,45 +411,6 @@ class SupportAgentConsumer(AsyncWebsocketConsumer):
                 "3. Modify an order\n"
                 "4. Get help with something else\n\n"
                 "Just let me know what you need!")
-
-    async def handle_graph_event(self, event: Dict[str, Any], conversation: Any):
-        """Handle events from the graph execution"""
-        try:
-            if isinstance(event, dict):
-                messages = event.get("messages", [])
-                if not messages and "agent" in event:
-                    messages = event["agent"].get("messages", [])
-
-                for message in messages:
-                    if not isinstance(message, AIMessage):
-                        continue
-
-                    # Save AI message
-                    ai_message = await self.db_ops.save_message(
-                        conversation=conversation,
-                        content_type='TE',
-                        is_from_user=True,
-                    )
-                    await self.db_ops.save_aitext(
-                        ai_message,
-                        content=message.content,
-                        tool_calls=message.additional_kwargs.get(
-                            'tool_calls', [])
-                    )
-
-                    # Check for confirmation needs
-                    if self.needs_confirmation(message):
-                        await self.handle_confirmation_request(message, conversation)
-                    else:
-                        await self.send_json({
-                            'type': 'agent_response',
-                            'message': message.content
-                        })
-
-        except Exception as e:
-            logger.error(f"Error handling graph event: {str(e)}")
-            logger.error(traceback.format_exc())
-            await self.send_error("Error processing response")
 
     async def handle_confirmation_request(self, message: AIMessage, conversation: Any):
         """Handle requests requiring user confirmation"""
@@ -436,8 +522,11 @@ class SupportAgentConsumer(AsyncWebsocketConsumer):
         await self.send(text_data=json.dumps(data))
 
     async def send_error(self, message: str):
-        """Send error message to WebSocket"""
+        """Send error message and hide spinner"""
         await self.send_json({
             'type': 'error',
             'message': message
+        })
+        await self.send_json({
+            'type': 'processing_complete'
         })
