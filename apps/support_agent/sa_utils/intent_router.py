@@ -33,13 +33,20 @@ class IntentRouter:
     INTENT_PATTERNS = {
         'track_order': [
             'where is my order',
-            'track',
+            'track order',
+            'track package',
             'shipping status',
             'delivery status',
             'when will it arrive',
             'package location',
             'delivery time',
-            'shipping update'
+            'shipping update',
+            'order location',
+            'track shipment',
+            'check delivery',
+            'delivery progress',
+            'order tracking',
+            'shipping information'
         ],
         'modify_order_quantity': [
             'change quantity',
@@ -49,7 +56,13 @@ class IntentRouter:
             'order quantity',
             'increase quantity',
             'decrease quantity',
-            'reduce amount'
+            'reduce amount',
+            'add more items',
+            'remove items',
+            'adjust quantity',
+            'change number of items',
+            'modify item count',
+            'update item quantity'
         ],
         'cancel_order': [
             'cancel order',
@@ -144,24 +157,58 @@ class IntentRouter:
         try:
             # First try rule-based pattern matching
             rule_based_result = self._rule_based_detection(user_input.lower())
+
+            # Get current intent from context
+            current_intent = context.get('current_intent')
+
+            # If we're already in a modification flow and the user confirms
+            if current_intent == 'modify_order_quantity' and user_input.lower() in ['yes', 'confirm', 'proceed']:
+                return IntentScore(
+                    intent='modify_order_quantity',
+                    confidence=0.9,
+                    entities=context.get('extracted_entities', {})
+                )
+
             if rule_based_result and rule_based_result.confidence > 0.8:
-                logger.debug(
-                    f"High confidence rule-based intent detected: {rule_based_result.intent}")
+                if rule_based_result.intent == 'order_detail':
+                    extracted_entities = self._extract_entities(
+                        user_input, 'order_detail', context)
+                    order_id = context.get(
+                        'order_id') or extracted_entities.get('order_id')
+                    if order_id:
+                        rule_based_result.entities = {'order_id': order_id}
+
                 return rule_based_result
 
             # Use LLM for more nuanced intent detection
-            llm_result = await self._llm_based_detection(user_input, context)
-            if llm_result:
-                logger.debug(
-                    f"LLM-based intent detected: {llm_result.intent}")
-                # Combine results if we have both
-                if rule_based_result:
-                    return self._combine_intent_results(
-                        rule_based_result, llm_result)
-                return llm_result
+            if self.llm:
+                llm_result = await self._llm_based_detection(user_input, context)
+                if llm_result:
+                    if rule_based_result:
+                        return self._combine_intent_results(rule_based_result, llm_result)
+                    return llm_result
 
-            # Fall back to rule-based result or default
-            return rule_based_result if rule_based_result else IntentScore(
+            # Fall back to rule-based result or maintain current intent
+            if rule_based_result:
+                return rule_based_result
+
+            # If we're in an active modification flow, maintain it
+            if current_intent and current_intent in ['modify_order_quantity', 'cancel_order']:
+                return IntentScore(
+                    intent=current_intent,
+                    confidence=0.7,
+                    entities=context.get('extracted_entities', {})
+                )
+
+            # If we're in an order context, default to order_detail
+            if context.get('order_id'):
+                return IntentScore(
+                    intent='order_detail',
+                    confidence=0.6,
+                    entities={'order_id': context['order_id']}
+                )
+
+            return IntentScore(
                 intent=self.default_intent,
                 confidence=0.5
             )
@@ -169,9 +216,20 @@ class IntentRouter:
         except Exception as e:
             logger.error(f"Error in intent detection: {str(e)}")
             logger.error(traceback.format_exc())
+
+            # Return safe fallback based on context
+            if context.get('current_intent'):
+                return IntentScore(
+                    intent=context['current_intent'],
+                    confidence=0.5,
+                    entities=context.get('extracted_entities', {})
+                )
+
             return IntentScore(
                 intent=self.default_intent,
-                confidence=0.5
+                confidence=0.5,
+                entities=self._extract_entities(
+                    user_input, self.default_intent, context)
             )
 
     def _rule_based_detection(self, user_input: str) -> Optional[IntentScore]:
@@ -359,39 +417,70 @@ class IntentRouter:
         # If different intents, use the one with higher confidence
         return rule_result if rule_result.confidence > llm_result.confidence else llm_result
 
-    def _extract_entities(
-        self,
-        user_input: str,
-        intent: str
-    ) -> Dict[str, Any]:
-        """
-        Extract relevant entities based on intent.
-
-        Args:
-            user_input: User's message
-            intent: Detected intent
-
-        Returns:
-            Dictionary of extracted entities
-        """
+    def _extract_entities(self, user_input: str, intent: str, context: Dict = None) -> Dict[str, Any]:
+        """Extract and consolidate all relevant entities with context awareness"""
         entities = {}
+        context = context or {}
 
-        # Extract order IDs
-        order_matches = re.findall(r'order\s*#?\s*(\d+)', user_input.lower())
-        if order_matches:
-            entities['order_id'] = order_matches[0]
+        # First check if we have entities in context
+        stored_entities = context.get('extracted_entities', {})
+
+        # Extract order IDs with comprehensive patterns
+        order_patterns = [
+            r'order\s*#?\s*(\d+)',
+            r'#\s*(\d+)',
+            r'number\s*(\d+)',
+            r'^(\d+)$',
+            r'order\s+id\s*:\s*(\d+)',
+            r'orderid\s*:\s*(\d+)',
+            r'order\s+(\d+)',
+        ]
+
+        # Try to extract order ID or use from context
+        order_id = stored_entities.get('order_id')
+        if not order_id:
+            for pattern in order_patterns:
+                match = re.search(pattern, user_input.lower())
+                if match:
+                    order_id = match.group(1)
+                    break
+
+        if order_id:
+            entities['order_id'] = order_id
 
         # Extract quantities for modification intents
         if intent == 'modify_order_quantity':
-            quantity_matches = re.findall(
-                r'(\d+)\s*(?:items?|pieces?|qty)', user_input.lower())
-            if quantity_matches:
-                entities['quantity'] = int(quantity_matches[0])
+            quantity = stored_entities.get('quantity')
+            if not quantity:
+                quantity_matches = re.findall(
+                    r'(\d+)\s*(?:items?|pieces?|qty)',
+                    user_input.lower()
+                )
+                if quantity_matches:
+                    quantity = int(quantity_matches[0])
+            if quantity:
+                entities['quantity'] = quantity
 
-        # Extract dates for tracking intents
-        if intent in ['track_order', 'delivery_issue']:
-            # Add date extraction logic here
-            pass
+        # Extract dates or use from context
+        date = stored_entities.get('date')
+        if not date:
+            date_patterns = [
+                r'(\d{1,2}/\d{1,2}/\d{2,4})',  # MM/DD/YYYY
+                r'(\d{4}-\d{1,2}-\d{1,2})',     # YYYY-MM-DD
+            ]
+            for pattern in date_patterns:
+                match = re.search(pattern, user_input)
+                if match:
+                    date = match.group(1)
+                    break
+        if date:
+            entities['date'] = date
+
+        # Merge with existing entities from context while prioritizing new ones
+        if stored_entities:
+            for key, value in stored_entities.items():
+                if key not in entities:  # Don't overwrite new entities
+                    entities[key] = value
 
         return entities
 

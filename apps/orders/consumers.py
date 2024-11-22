@@ -105,7 +105,6 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
             intent = data.get('intent')
             order_id = data.get('order_id')
             logger.info(f"Processing intent: {intent} for order: {order_id}")
-            conversation_id = data.get('uuid')
 
             # Reset message history for new intent
             self.current_messages = []
@@ -118,7 +117,7 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
 
             # Get conversation and order details
             conversation, order = await self.db_ops.get_or_create_conversation(
-                conversation_id,
+                self.conversation_id,
                 order_id
             )
 
@@ -158,7 +157,7 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
                 intent=intent,
                 order_details=order_details,
                 tool_manager=self.tool_manager,
-                conversation_id=conversation_id
+                conversation_id=self.conversation_id
             )
 
             graph_builder = GraphBuilder(config)
@@ -179,7 +178,7 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
 
             # Save initial message
             user_message = await self.db_ops.save_message(
-                conversation=conversation,
+                conversation_id=self.conversation_id,
                 content_type='TE',
                 is_from_user=True
             )
@@ -190,7 +189,7 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
                 "messages": self.current_messages,
                 "intent": intent,
                 "order_info": order_details,
-                "conversation_id": str(conversation.id),
+                "conversation_id": str(self.conversation_id),
                 "confirmation_pending": False,
                 "completed": False
             }
@@ -237,7 +236,7 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
 
             # Save user message
             user_message = await self.db_ops.save_message(
-                conversation=conversation,
+                conversation_id=self.conversation_id,
                 content_type='TE',
                 is_from_user=True
             )
@@ -300,7 +299,7 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
 
                 # Save result to conversation
                 ai_message = await self.db_ops.save_message(
-                    conversation=conversation,
+                    conversation_id=self.conversation_id,
                     content_type='TE',
                     is_from_user=False
                 )
@@ -331,7 +330,7 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
 
                 # Save decline message
                 ai_message = await self.db_ops.save_message(
-                    conversation=conversation,
+                    conversation_id=self.conversation_id,
                     content_type='TE',
                     is_from_user=False
                 )
@@ -374,7 +373,7 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
 
                     # Save the message
                     ai_message = await self.db_ops.save_message(
-                        conversation=conversation,
+                        conversation_id=self.conversation_id,
                         content_type='TE',
                         is_from_user=False,
                         in_reply_to=user_message
