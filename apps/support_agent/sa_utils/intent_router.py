@@ -157,29 +157,48 @@ class IntentRouter:
         try:
             # First try rule-based pattern matching
             rule_based_result = self._rule_based_detection(user_input.lower())
+
+            # Get current intent from context
+            current_intent = context.get('current_intent')
+
+            # If we're already in a modification flow and the user confirms
+            if current_intent == 'modify_order_quantity' and user_input.lower() in ['yes', 'confirm', 'proceed']:
+                return IntentScore(
+                    intent='modify_order_quantity',
+                    confidence=0.9,
+                    entities=context.get('extracted_entities', {})
+                )
+
             if rule_based_result and rule_based_result.confidence > 0.8:
-                # If we detect order_detail intent, ensure we have order context
                 if rule_based_result.intent == 'order_detail':
-                    # Use _extract_entities to get order ID
                     extracted_entities = self._extract_entities(
                         user_input, 'order_detail', context)
                     order_id = context.get(
                         'order_id') or extracted_entities.get('order_id')
                     if order_id:
                         rule_based_result.entities = {'order_id': order_id}
+
                 return rule_based_result
 
             # Use LLM for more nuanced intent detection
-            llm_result = await self._llm_based_detection(user_input, context)
-            if llm_result:
-                # Combine results if we have both
-                if rule_based_result:
-                    return self._combine_intent_results(rule_based_result, llm_result)
-                return llm_result
+            if self.llm:
+                llm_result = await self._llm_based_detection(user_input, context)
+                if llm_result:
+                    if rule_based_result:
+                        return self._combine_intent_results(rule_based_result, llm_result)
+                    return llm_result
 
-            # Fall back to rule-based result or default
+            # Fall back to rule-based result or maintain current intent
             if rule_based_result:
                 return rule_based_result
+
+            # If we're in an active modification flow, maintain it
+            if current_intent and current_intent in ['modify_order_quantity', 'cancel_order']:
+                return IntentScore(
+                    intent=current_intent,
+                    confidence=0.7,
+                    entities=context.get('extracted_entities', {})
+                )
 
             # If we're in an order context, default to order_detail
             if context.get('order_id'):
@@ -197,10 +216,18 @@ class IntentRouter:
         except Exception as e:
             logger.error(f"Error in intent detection: {str(e)}")
             logger.error(traceback.format_exc())
+
+            # Return safe fallback based on context
+            if context.get('current_intent'):
+                return IntentScore(
+                    intent=context['current_intent'],
+                    confidence=0.5,
+                    entities=context.get('extracted_entities', {})
+                )
+
             return IntentScore(
                 intent=self.default_intent,
                 confidence=0.5,
-                # Still try to extract entities
                 entities=self._extract_entities(
                     user_input, self.default_intent, context)
             )

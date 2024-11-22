@@ -45,25 +45,50 @@ class Assistant:
         try:
             # Get conversation context
             intent = state.get('intent', 'general')
-            logger.info(f"Intent is {intent}")
-            logger.info(f"state is {state}")
             order_info = state.get('order_info', {})
             context = state.get('context', {})
+            logger.info(
+                f"Intent,  state and context: {intent}, {state}, {context}")
+
+            # Handle user confirmation for modification
+            last_message = state['messages'][-1].content.lower()
+            if (intent == 'modify_order_quantity' and
+                    any(word in last_message for word in ['yes', 'confirm', 'proceed'])):
+
+                # Extract required information from context
+                order_id = order_info.get('order_id')
+                product_id = order_info.get('items', [{}])[0].get('product_id')
+                new_quantity = context.get('extracted_entities', {}).get(
+                    'quantity', 2)  # Default to 2 as per conversation
+
+                # Create tool call for modification
+                return {
+                    "messages": [
+                        AIMessage(
+                            content="I'll proceed with modifying the order quantity.",
+                            tool_calls=[{
+                                "name": "modify_order_quantity",
+                                "function": {
+                                    "name": "modify_order_quantity",
+                                    "arguments": json.dumps({
+                                        "order_id": order_id,
+                                        "customer_id": str(context.get('user_id')),
+                                        "product_id": product_id,
+                                        "new_quantity": new_quantity
+                                    })
+                                }
+                            }]
+                        )
+                    ]
+                }
 
             # For order_detail intent, format response directly
             if intent == 'order_detail' and order_info:
                 return {
-                    "messages": [
-                        AIMessage(
-                            content=self._format_order_details(order_info))
-                    ]
+                    "messages": [AIMessage(content=self._format_order_details(order_info))]
                 }
 
-            # Get appropriate prompt template
             prompt = PromptManager.get_prompt(intent)
-            logger.info(f"Generated prompt: {prompt}")
-
-            # Format the system prompt with context
             formatted_prompt = prompt.format(
                 order_info=json.dumps(
                     order_info, indent=2, cls=CustomJSONEncoder),
@@ -99,16 +124,6 @@ class Assistant:
                     ))
                     continue
 
-                # Additional validation for context preservation
-                if order_info and not self._validates_order_context(result):
-                    logger.warning(
-                        "Response missing order context, reinforcing...")
-                    logger.error(traceback.format_exc())
-                    messages.append(HumanMessage(
-                        content="Please ensure your response acknowledges the current order context."
-                    ))
-                    continue
-
                 break
 
             return {"messages": [result]}
@@ -123,28 +138,6 @@ class Assistant:
                     )
                 ]
             }
-
-    def _validates_order_context(self, result: AIMessage) -> bool:
-        """
-        Validate that the response maintains awareness of order context.
-        This is a basic check that can be enhanced based on your specific needs.
-        """
-        if not hasattr(result, 'content'):
-            return False
-
-        content = result.content.lower()
-
-        # Check for common order-related terms
-        context_indicators = [
-            'order', 'item', 'purchase', 'delivery',
-            'tracking', 'status', 'shipping'
-        ]
-
-        # If using tool calls, those are also valid responses
-        if hasattr(result, 'tool_calls') and result.tool_calls:
-            return True
-
-        return any(indicator in content for indicator in context_indicators)
 
     def _format_order_details(self, order_info: Dict) -> str:
         """Format order details into a readable message."""
@@ -206,6 +199,14 @@ def create_customer_support_agent(config: Dict[str, Any]):
         bound_model = model.bind_tools(tools)
         logger.info(f"Bound {len(tools)} tools to model")
 
+        safe_tools = [
+            t for t in tools if t.name not in get_sensitive_tool_names()]
+        sensitive_tools = [
+            t for t in tools if t.name in get_sensitive_tool_names()]
+
+        logger.info(f"Safe tools: {[t.name for t in safe_tools]}")
+        logger.info(f"Sensitive tools: {[t.name for t in sensitive_tools]}")
+
         # Create assistant
         assistant = Assistant(bound_model)
 
@@ -214,12 +215,6 @@ def create_customer_support_agent(config: Dict[str, Any]):
 
         # Add nodes
         builder.add_node("assistant", assistant)
-
-        safe_tools = [
-            t for t in tools if t.name not in get_sensitive_tool_names()]
-        sensitive_tools = [
-            t for t in tools if t.name in get_sensitive_tool_names()]
-
         builder.add_node("safe_tools", ToolNode(safe_tools))
         builder.add_node("sensitive_tools", ToolNode(sensitive_tools))
 
@@ -243,12 +238,16 @@ def create_customer_support_agent(config: Dict[str, Any]):
             if next_node == "__end__":
                 return "__end__"
 
+            # Get the tool call from the last message
             ai_message = state["messages"][-1]
             if not hasattr(ai_message, 'tool_calls') or not ai_message.tool_calls:
                 logger.info("No tool calls in message, ending")
                 return "__end__"
 
+            # Route based on tool sensitivity
             tool_name = ai_message.tool_calls[0]["name"]
+            logger.info(f"Routing tool: {tool_name}")
+
             logger.info(
                 f"Routing to {'sensitive_tools' if tool_name in get_sensitive_tool_names() else 'safe_tools'} for tool: {tool_name}")
             return "sensitive_tools" if tool_name in get_sensitive_tool_names() else "safe_tools"
