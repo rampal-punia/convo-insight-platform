@@ -2,13 +2,15 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 from config.models import CreationModificationDateBase
 import uuid
+import logging
+import json
+from django.core.serializers.json import DjangoJSONEncoder
+
+logger = logging.getLogger('orders')
 
 
 class ConversationSnapshot(CreationModificationDateBase):
-    """
-    Model for storing point-in-time snapshots of conversation states.
-    Used to track conversation progression and enable state restoration.
-    """
+    """Model for storing point-in-time snapshots of conversation states."""
 
     id = models.UUIDField(
         primary_key=True,
@@ -27,16 +29,17 @@ class ConversationSnapshot(CreationModificationDateBase):
     # Store serialized state data as JSONField
     state_data = models.JSONField(
         help_text=_("Complete serialized conversation state data"),
-        default=dict
+        default=dict,
+        encoder=DjangoJSONEncoder  # Use Django's JSON encoder for better type handling
     )
 
     # Store conversation metrics separately for easier querying
     metrics_data = models.JSONField(
         help_text=_("Conversation metrics at time of snapshot"),
-        default=dict
+        default=dict,
+        encoder=DjangoJSONEncoder
     )
 
-    # Additional metrics fields for quick access without JSON deserialization
     total_messages = models.PositiveIntegerField(
         default=0,
         help_text=_("Total number of messages at snapshot time")
@@ -108,41 +111,17 @@ class ConversationSnapshot(CreationModificationDateBase):
         return f"Snapshot of {self.conversation.id} at {self.created}"
 
     def save(self, *args, **kwargs):
-        """
-        Override save to extract and store quick-access metrics
-        from metrics_data JSON field
-        """
-        if self.metrics_data:
-            self.total_messages = self.metrics_data.get('total_messages', 0)
-            self.user_messages = self.metrics_data.get('user_messages', 0)
-            self.ai_messages = self.metrics_data.get('ai_messages', 0)
-            self.intent_changes = self.metrics_data.get('intent_changes', 0)
-            self.tool_uses = self.metrics_data.get('tool_uses', 0)
-            self.avg_response_time = self.metrics_data.get('avg_response_time')
+        """Override save to ensure proper JSON serialization"""
+        try:
+            # Ensure state_data is properly serialized
+            if isinstance(self.state_data, str):
+                self.state_data = json.loads(self.state_data)
 
-        if self.state_data:
-            self.current_intent = self.state_data.get('current_intent')
-            self.previous_intent = self.state_data.get('previous_intent')
+            # Ensure metrics_data is properly serialized
+            if isinstance(self.metrics_data, str):
+                self.metrics_data = json.loads(self.metrics_data)
 
-        super().save(*args, **kwargs)
-
-    @classmethod
-    def create_snapshot(cls, conversation_id: str, state_data: dict, metrics_data: dict, snapshot_type: str = 'AU'):
-        """
-        Class method to create a new snapshot with proper data extraction.
-
-        Args:
-            conversation_id: ID of the conversation
-            state_data: Complete state data dictionary
-            metrics_data: Metrics data dictionary
-            snapshot_type: Type of snapshot (AU/MN/EV/FN)
-
-        Returns:
-            Created ConversationSnapshot instance
-        """
-        return cls.objects.create(
-            conversation_id=conversation_id,
-            state_data=state_data,
-            metrics_data=metrics_data,
-            snapshot_type=snapshot_type
-        )
+            super().save(*args, **kwargs)
+        except Exception as e:
+            logger.error(f"Error saving snapshot: {str(e)}")
+            raise

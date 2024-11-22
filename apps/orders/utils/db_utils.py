@@ -1,7 +1,7 @@
 from channels.db import database_sync_to_async
 import traceback
 from django.utils import timezone
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from django.db import transaction
 from convochat.models import Conversation, Message, UserText, AIText
 from langchain_core.messages import AIMessage, HumanMessage
@@ -61,11 +61,53 @@ class DatabaseOperations:
         except Order.DoesNotExist:
             logger.warning(
                 f"Order {order_id} not found for user {self.user.id}")
+            logger.error(traceback.format_exc())
             return {"error": "Order not found"}
         except Exception as e:
             logger.error(f"Error getting tracking info: {str(e)}")
             logger.error(traceback.format_exc())
             return {"error": f"Error retrieving tracking information: {str(e)}"}
+
+    @database_sync_to_async
+    def update_conversation(self, conversation_id: str, update_data: Dict[str, Any]) -> bool:
+        """
+        Update conversation with the provided data
+
+        Args:
+            conversation_id: The ID of the conversation to update
+            update_data: Dictionary containing fields to update
+
+        Returns:
+            bool: True if update was successful, False otherwise
+        """
+        try:
+            from convochat.models import Conversation
+
+            conversation = Conversation.objects.get(id=conversation_id)
+
+            # Update allowed fields
+            if 'status' in update_data:
+                conversation.status = update_data['status']
+
+            if 'summary' in update_data:
+                conversation.summary = update_data['summary']
+
+            if 'overall_sentiment_score' in update_data:
+                conversation.overall_sentiment_score = update_data['overall_sentiment_score']
+
+            if 'resolution_status' in update_data:
+                conversation.resolution_status = update_data['resolution_status']
+
+            conversation.save()
+            return True
+
+        except Conversation.DoesNotExist:
+            logger.error(f"Conversation {conversation_id} not found")
+            return False
+        except Exception as e:
+            logger.error(f"Error updating conversation: {str(e)}")
+            logger.error(traceback.format_exc())
+            return False
 
     @database_sync_to_async
     def get_tracking_history(self, order_id: str) -> List[Dict]:
@@ -114,9 +156,11 @@ class DatabaseOperations:
         except Order.DoesNotExist:
             logger.warning(
                 f"Order {order_id} not found for user {self.user.id}")
+            logger.error(traceback.format_exc())
             return {"error": "Order not found"}
         except Exception as e:
             logger.error(f"Error getting current location: {str(e)}")
+            logger.error(traceback.format_exc())
             return {"error": f"Error retrieving location: {str(e)}"}
 
     @database_sync_to_async
@@ -146,6 +190,7 @@ class DatabaseOperations:
             return {"error": "Order not found"}
         except Exception as e:
             logger.error(f"Error getting delivery estimate: {str(e)}")
+            logger.error(traceback.format_exc())
             return {"error": f"Error retrieving delivery estimate: {str(e)}"}
 
     @database_sync_to_async
@@ -184,6 +229,7 @@ class DatabaseOperations:
             return {"error": "Order not found"}
         except Exception as e:
             logger.error(f"Error updating tracking status: {str(e)}")
+            logger.error(traceback.format_exc())
             return {"error": f"Error updating tracking: {str(e)}"}
 
     def _calculate_delivery_window(
@@ -248,6 +294,7 @@ class DatabaseOperations:
 
         except Exception as e:
             logger.error(f"Error calculating delivery confidence: {str(e)}")
+            logger.error(traceback.format_exc())
             return "UNKNOWN"
 
     def _update_order_status_from_tracking(
@@ -301,16 +348,40 @@ class DatabaseOperations:
         order_id: Optional[str] = None
     ) -> Tuple[Conversation, Optional[Order]]:
         """Get or create conversation with optional order link"""
-        conversation = self.get_or_create_general_conversation(conversation_id)
+        try:
+            conversation, created = Conversation.objects.get_or_create(
+                id=conversation_id,
+                defaults={
+                    'user': self.user,
+                    'status': 'AC',
+                    'title': 'Order Support Conversation'
+                }
+            )
 
-        order = None
-        if order_id:
-            order = self.get_order_by_id(order_id)
-            if order:
-                # Link order to conversation if not already linked
-                self.link_order_to_conversation(order, conversation)
+            if order_id:
+                order = Order.objects.get(id=order_id)
+                OrderConversationLink.objects.get_or_create(
+                    order=order,
+                    conversation=conversation
+                )
 
-        return conversation, order
+                # End other active conversations
+                if created:
+                    Conversation.objects.filter(
+                        user=self.user,
+                        status='AC'
+                    ).exclude(
+                        id=conversation_id
+                    ).update(status='EN')
+
+                return conversation, order
+
+            return conversation, None
+
+        except Exception as e:
+            logger.error(f"Error in get_or_create_conversation: {str(e)}")
+            logger.error(traceback.format_exc())
+            return None, None
 
     @database_sync_to_async
     def get_order_by_id(self, order_id: str) -> Optional[Order]:
@@ -329,40 +400,16 @@ class DatabaseOperations:
             conversation=conversation
         )
 
-    # async def get_or_create_conversation(self, conversation_id, order_id=None):
-    #     """Create or get existing conversation and link it to the order"""
-    #     conversation, created = await database_sync_to_async(Conversation.objects.update_or_create)(
-    #         id=conversation_id,
-    #         defaults={
-    #             'user': self.user,
-    #             'status': 'AC'
-    #         }
-    #     )
-    #     if order_id:
-    #         order = await database_sync_to_async(Order.objects.get)(id=order_id)
-    #         await database_sync_to_async(OrderConversationLink.objects.get_or_create)(
-    #             order=order,
-    #             conversation=conversation
-    #         )
-
-    #         if created:
-    #             await database_sync_to_async(
-    #                 Conversation.objects.filter(user=self.user, status='AC').exclude(
-    #                     id=conversation_id).update
-    #             )(status='EN')
-
-    #         return conversation, order
-    #     return conversation, None
-
     @database_sync_to_async
     def save_message(
         self,
-        conversation: Conversation,
+        conversation_id: str,
         content_type: str = 'TE',
         is_from_user: bool = True,
         in_reply_to: Optional[Message] = None
     ) -> Message:
         """Save a message to the conversation"""
+        conversation = Conversation.objects.get(id=conversation_id)
         return Message.objects.create(
             conversation=conversation,
             content_type=content_type,
@@ -389,7 +436,7 @@ class DatabaseOperations:
         return AIText.objects.create(
             message=message,
             content=content,
-            tool_calls=tool_calls or []
+            tool_calls=tool_calls if tool_calls else []
         )
 
     @database_sync_to_async
@@ -655,6 +702,7 @@ class DatabaseOperations:
             return None
         except Exception as e:
             logger.error(f"Error extracting quantity: {str(e)}")
+            logger.error(traceback.format_exc())
             return None
 
     @database_sync_to_async
