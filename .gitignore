@@ -207,3 +207,6 @@ _*.md
 **/finetuned_models/
 **/fine_tuned_sentence_transformer/
 _error.md
+
+tests/
+*.ini
