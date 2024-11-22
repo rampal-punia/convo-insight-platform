@@ -1,4 +1,4 @@
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, TypedDict, Annotated
 import logging
 import os
 import base64
@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from django.conf import settings
 
 from langgraph.graph import StateGraph, START, END
+from langgraph.graph.message import add_messages, AnyMessage
+from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import ToolNode
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage
@@ -16,6 +18,19 @@ from .db_utils import DatabaseOperations
 from . import tool_manager as tm
 
 logger = logging.getLogger('orders')
+
+
+class OrderState(TypedDict):
+    """Represents the state of an order in the system"""
+    messages: Annotated[list[AnyMessage], add_messages]
+    customer_info: dict
+    order_info: dict
+    cart: dict
+    intent: str
+    conversation_id: str
+    modified: bool
+    confirmation_pending: bool
+    completed: bool
 
 
 @dataclass
@@ -272,12 +287,23 @@ class GraphBuilder:
             logger.error(traceback.format_exc())
             return "agent"
 
+    def chatbot(state: OrderState):
+        # Initialize LLM
+        llm = ChatOpenAI(
+            model='gpt-4o-mini',
+            temperature=0.2,
+            streaming=True
+        )
+        result = llm.invoke(state["messages"])
+
+        return {"messages": [result]}
+
     def build(self) -> StateGraph:
         """Builds and returns the configured StateGraph with separate tool handling"""
         logger.info(f"Building graph for intent: {self.config.intent}")
         logger.debug(f"Graph config: {self.config}")
 
-        workflow = StateGraph(tm.OrderState)
+        workflow = StateGraph(OrderState)
 
         # Add nodes
         workflow.add_node("agent", self._agent_function)

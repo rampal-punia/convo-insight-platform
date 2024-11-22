@@ -1,11 +1,14 @@
-from typing import Annotated, TypedDict, List, Dict, Optional
+from typing import List, Dict, Optional
 from dataclasses import dataclass
 import logging
 import traceback
 from enum import Enum
-from langgraph.graph.message import add_messages, AnyMessage
+
 from langchain_core.tools import tool, BaseTool
 from pydantic import BaseModel, Field
+from langchain_community.tools.tavily_search import TavilySearchResults
+
+tavily_tool = TavilySearchResults(max_results=2)
 
 logger = logging.getLogger('orders')
 
@@ -22,19 +25,6 @@ class ToolMetadata:
     category: ToolCategory
     description: str
     requires_confirmation: bool = False
-
-
-class OrderState(TypedDict):
-    """Represents the state of an order in the system"""
-    messages: Annotated[list[AnyMessage], add_messages]
-    customer_info: dict
-    order_info: dict
-    cart: dict
-    intent: str
-    conversation_id: str
-    modified: bool
-    confirmation_pending: bool
-    completed: bool
 
 
 class BaseOrderSchema(BaseModel):
