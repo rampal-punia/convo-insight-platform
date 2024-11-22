@@ -32,12 +32,21 @@ class OrderCreateView(LoginRequiredMixin, CreateView):
     template_name = 'orders/order_form.html'
     success_url = reverse_lazy('orders:order_list_url')
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        if self.request.POST:
+            context['order_items'] = OrderItemFormSet(self.request.POST)
+        else:
+            context['order_items'] = OrderItemFormSet()
+        return context
+
     def form_valid(self, form):
         context = self.get_context_data()
         order_items = context['order_items']
 
         try:
             with transaction.atomic():
+                # Save the order first
                 form.instance.user = self.request.user
                 form.instance.status = Order.Status.PENDING
                 self.object = form.save()
@@ -45,31 +54,38 @@ class OrderCreateView(LoginRequiredMixin, CreateView):
                 # Process order items
                 if order_items.is_valid():
                     order_items.instance = self.object
-                    for form in order_items.forms:
-                        if form.is_valid() and not form.cleaned_data.get('DELETE', False):
-                            order_item = form.instance
-                            order_item.price = order_item.product.price
+                    saved_items = []
 
-                    order_items.save()
+                    # Save each valid form in the formset
+                    for item_form in order_items.forms:
+                        if item_form.is_valid() and not item_form.cleaned_data.get('DELETE', False):
+                            if item_form.cleaned_data.get('product') and item_form.cleaned_data.get('quantity'):
+                                order_item = item_form.save(commit=False)
+                                order_item.order = self.object
+                                order_item.price = order_item.product.price
+                                order_item.save()
+                                saved_items.append(order_item)
+
+                    # Calculate total amount from all saved items
+                    total_amount = sum(
+                        item.quantity * item.price for item in saved_items
+                    )
+                    self.object.total_amount = total_amount
+
+                    # Initialize shipping and tracking information
+                    self._initialize_shipping_info()
+
+                    # Create initial tracking entry
+                    self._create_initial_tracking()
+
+                    # Save the order with updated total
+                    self.object.save()
+
+                    messages.success(
+                        self.request, "Order created successfully")
+                    return super().form_valid(form)
                 else:
                     raise ValidationError("Order items are invalid.")
-
-                # Calculate total amount
-                total_amount = sum(
-                    item.quantity * item.product.price for item in self.object.items.all())
-                self.object.total_amount = total_amount
-
-                # Initialize shipping and tracking information
-                self._initialize_shipping_info()
-
-                # Create initial tracking entry
-                self._create_initial_tracking()
-
-                # Save with all updates
-                self.object.save()
-
-            messages.success(self.request, "Order created successfully")
-            return super().form_valid(form)
 
         except Exception as e:
             messages.error(self.request, f"Error creating order: {str(e)}")
@@ -152,15 +168,6 @@ class OrderCreateView(LoginRequiredMixin, CreateView):
             messages.error(
                 self.request, "There was an error with the order items.")
         return super().form_invalid(form)
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        if self.request.POST:
-            context['order_items'] = OrderItemFormSet(
-                self.request.POST, instance=self.object)
-        else:
-            context['order_items'] = OrderItemFormSet(instance=self.object)
-        return context
 
 
 class OrderUpdateView(LoginRequiredMixin, UpdateView):
