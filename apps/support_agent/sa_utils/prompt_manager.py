@@ -3,36 +3,13 @@ from langchain_core.prompts import ChatPromptTemplate
 from typing import Dict
 from datetime import datetime
 
-
-SYSTEM_PROMPT = """You are a helpful AI assistant for an e-commerce website. You can help users with:
-1. Order Modification and information
-2. Shopping cart management
-3. General web searches for product research
-
-You have access to several tools:
-- modify_order_quantity: To modify order quantites
-- get_cart: View a user's current shopping cart
-- update_cart: Add, update, or remove items from the cart
-- web_search: Search the web for general information
-
-Use your tools based on the user's needs:
-- For product-related queries, use search_products
-- For cart-related queries, use get_cart and update_cart
-- For general information or research, use web_search
-
-The assistant will automatically determine which tool to use based on the user's query.
-
-System time: {system_time}
-Current user: {user_id}
-"""
-
 # Define assistant prompt
 assistant_prompt = ChatPromptTemplate.from_messages([
     (
         "system",
         "You are a helpful e-commerce customer support assistant. "
         "Help users with product searches, order status, and shopping cart management. "
-        "\n\nCurrent customer:\n<Customer>\n{user_info}\n</Customer>"
+        "\n\nCurrent customer: {user_info}"
         "\nCurrent time: {time}.",
     ),
     ("placeholder", "{messages}")
