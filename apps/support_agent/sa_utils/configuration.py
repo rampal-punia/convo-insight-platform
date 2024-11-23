@@ -1,6 +1,7 @@
 """Define the configurable parameters and schemas for the agent."""
-from dataclasses import dataclass, field
-from typing import Annotated, Dict, Optional, Any
+from dataclasses import dataclass, field, fields
+from decimal import Decimal
+from typing import Annotated, Dict, Optional, Any, List
 from pydantic import BaseModel, Field
 from django.conf import settings
 from langchain_core.runnables import RunnableConfig, ensure_config
@@ -29,6 +30,30 @@ class ModifyOrderQuantity(BaseOrderSchema):
 class CancelOrderRequest(BaseOrderSchema):
     """Schema for order cancellation"""
     reason: str = Field(description="The reason for cancellation")
+
+
+@dataclass
+class Product:
+    id: str
+    name: str
+    price: Decimal
+    category: str
+    description: str
+    stock: int
+
+
+@dataclass
+class CartItem:
+    product_id: str
+    quantity: int
+    price: Decimal
+
+
+@dataclass
+class UserCart:
+    user_id: str
+    items: List[CartItem]
+    total: Decimal
 
 
 # Agent Configuration
@@ -79,10 +104,8 @@ class Configuration:
         """Create a Configuration instance from a RunnableConfig object."""
         config = ensure_config(config)
         configurable = config.get("configurable") or {}
-        return cls(**{
-            k: v for k, v in configurable.items()
-            if k in [f.name for f in field(cls) if f.init]
-        })
+        _fields = {f.name for f in fields(cls) if f.init}
+        return cls(**{k: v for k, v in configurable.items() if k in _fields})
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert configuration to dictionary format."""

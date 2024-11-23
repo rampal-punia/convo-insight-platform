@@ -1,20 +1,32 @@
-from langchain_core.tools import BaseTool
-from typing import Any, Callable, List, cast, Dict
+from decimal import Decimal
+from typing import Any, Callable, List, cast, Dict, Annotated, Optional
 import logging
 import traceback
 
 from langchain_community.tools import DuckDuckGoSearchResults
+from langchain_core.tools import BaseTool
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import InjectedToolArg, tool
-from typing_extensions import Annotated
-from .configuration import Configuration
+
+from .configuration import (
+    Configuration,
+    BaseOrderSchema,
+    TrackingRequest,
+    ModifyOrderQuantity,
+    CancelOrderRequest,
+    Product,
+    CartItem,
+    UserCart
+)
 
 logger = logging.getLogger('orders')
 
 
 @tool
-async def duckduckgo_search(
-        query: str, *, config: Annotated[RunnableConfig, InjectedToolArg]
+async def web_search(
+        query: str,
+        *,
+        config: Annotated[RunnableConfig, InjectedToolArg]
 ) -> List[Dict[str, str]]:
     """Search for general web results using DuckDuckGo
     This function performs a search using the DuckDuckGo search engine, which is known
@@ -183,9 +195,164 @@ async def cancel_order(
         logger.error(traceback.format_exc())
         return "Failed to cancel order"
 
+
+class ProductDatabase:
+    """Mock database for products"""
+
+    def __init__(self):
+        self.products = {
+            "p1": Product("p1", "Smartphone X", Decimal("699.99"), "electronics",
+                          "Latest smartphone with advanced features", 50),
+            "p2": Product("p2", "Running Shoes", Decimal("89.99"), "sports",
+                          "Comfortable running shoes for athletes", 100),
+            "p3": Product("p3", "Coffee Maker", Decimal("129.99"), "appliances",
+                          "Premium coffee maker with timer", 30)
+        }
+        self.carts: Dict[str, UserCart] = {}
+
+
+db = ProductDatabase()
+
+# Tool Implementations
+
+
+@tool
+async def search_products(
+    query: str,
+    category: Optional[str] = None,
+    max_price: Optional[float] = None,
+    min_price: Optional[float] = None
+) -> List[Dict[str, Any]]:
+    """
+    Search for products in the store.
+
+    Args:
+        query: Search query string
+        category: Optional category filter
+        max_price: Optional maximum price filter
+        min_price: Optional minimum price filter
+
+    Returns:
+        List of matching products with their details
+    """
+    results = []
+    query = query.lower()
+
+    for product in db.products.values():
+        # Check if product matches search criteria
+        matches_query = (
+            query in product.name.lower() or
+            query in product.description.lower()
+        )
+        matches_category = (
+            not category or
+            category.lower() == product.category.lower()
+        )
+        matches_price = (
+            (not max_price or product.price <= Decimal(str(max_price))) and
+            (not min_price or product.price >= Decimal(str(min_price)))
+        )
+
+        if matches_query and matches_category and matches_price:
+            results.append({
+                "id": product.id,
+                "name": product.name,
+                "price": float(product.price),
+                "category": product.category,
+                "description": product.description,
+                "stock": product.stock
+            })
+
+    return results
+
+
+@tool
+async def get_cart(
+    user_id: str,
+) -> Dict[str, Any]:
+    """
+    Get the current shopping cart for a user.
+
+    Args:
+        user_id: The ID of the user whose cart to retrieve
+
+    Returns:
+        Cart details including items and total
+    """
+    cart = db.carts.get(user_id, UserCart(user_id, [], Decimal("0")))
+
+    return {
+        "user_id": cart.user_id,
+        "items": [
+            {
+                "product_id": item.product_id,
+                "product_name": db.products[item.product_id].name,
+                "quantity": item.quantity,
+                "price": float(item.price),
+                "subtotal": float(item.price * item.quantity)
+            }
+            for item in cart.items
+        ],
+        "total": float(cart.total)
+    }
+
+
+@tool
+async def update_cart(
+    user_id: str,
+    product_id: str,
+    quantity: int
+) -> Dict[str, Any]:
+    """
+    Update the shopping cart by adding/updating/removing products.
+
+    Args:
+        user_id: The ID of the user whose cart to update
+        product_id: The ID of the product to update
+        quantity: New quantity (0 to remove item)
+
+    Returns:
+        Updated cart details
+    """
+    # Get or create cart
+    if user_id not in db.carts:
+        db.carts[user_id] = UserCart(user_id, [], Decimal("0"))
+
+    cart = db.carts[user_id]
+    product = db.products.get(product_id)
+
+    if not product:
+        raise ValueError(f"Product {product_id} not found")
+
+    if quantity > product.stock:
+        raise ValueError(
+            f"Requested quantity exceeds available stock ({product.stock})")
+
+    # Find existing item
+    existing_item = next(
+        (item for item in cart.items if item.product_id == product_id),
+        None
+    )
+
+    if quantity == 0 and existing_item:
+        # Remove item
+        cart.items.remove(existing_item)
+    elif existing_item:
+        # Update quantity
+        existing_item.quantity = quantity
+    elif quantity > 0:
+        # Add new item
+        cart.items.append(CartItem(product_id, quantity, product.price))
+
+    # Recalculate total
+    cart.total = sum(item.price * item.quantity for item in cart.items)
+
+    return await get_cart(user_id)
+
+
 # List of all available tools
 TOOLS: List[Callable[..., Any]] = [
-    duckduckgo_search,
+    web_search,
     track_order,
     modify_order_quantity,
     cancel_order
@@ -218,7 +385,7 @@ if __name__ == '__main__':
     async def test_searches():
         query = "what is artificial intelligence?"
         print("\nTesting DuckDuckGo Search:")
-        ddg_results = await duckduckgo_search(query, config={})
+        ddg_results = await web_search(query, config={})
         print(f"Found {len(ddg_results)} results")
 
     asyncio.run(test_searches())

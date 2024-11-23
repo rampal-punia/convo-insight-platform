@@ -1,7 +1,7 @@
 """Define the state structures for the agent."""
 
 from dataclasses import dataclass, field
-from typing import Sequence
+from typing import Sequence, Dict, Any
 
 from langchain_core.messages import AnyMessage
 from langgraph.graph import add_messages
@@ -37,12 +37,18 @@ class InputState:
 
 
 @dataclass
-class State(InputState):
+class ECommerseState(InputState):
     """Represents the complete state of the agent, extending InputState with additional attributes.
 
     This class can be used to store any information needed throughout the agent's lifecycle.
     """
-
+    order_info: Dict = field(default=False)
+    user_info: Dict = field(default=False)
+    intent: str = field(default=False)
+    conversation_id: str = field(default=False)
+    confirmation_pending: bool = field(default=False)
+    completed: bool = field(default=False)
+    context: Dict[str, Any] = field(default=False)
     is_last_step: IsLastStep = field(default=False)
     """
     Indicates whether the current step is the last one before the graph raises an error.
