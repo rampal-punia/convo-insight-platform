@@ -145,6 +145,41 @@ GRAPH_CONFIG = {
     "error_policy": "stop"  # or "continue" based on requirements
 }
 
+
+MODEL_LOAD_TIMEOUT = 60
+
+# Base directory for models
+MODEL_BASE_DIR = BASE_DIR / 'apps' / 'playground'
+
+# Model configurations
+FINETUNED_MODELS = {
+    'sentiment': {
+        'path': str(MODEL_BASE_DIR / 'sentiment_tr_model'),
+        'cache_key': 'sentiment_model',
+        'batch_size': 32
+    },
+    'intent': {
+        'path': str(MODEL_BASE_DIR / 'bertmodel_intent_12nov24'),
+        'cache_key': 'intent_model',
+        'batch_size': 32
+    },
+    'topic': {
+        'bertopic_path': str(MODEL_BASE_DIR / 'fine_tuned_sentence_transformer/trained_bertopic_transformer_model'),
+        'transformer_path': str(MODEL_BASE_DIR / 'fine_tuned_sentence_transformer'),
+        'cache_key': 'topic_model',
+        'batch_size': 16
+    },
+    'ner': {
+        'path': "dbmdz/bert-large-cased-finetuned-conll03-english",
+        'cache_key': 'ner_model',
+        'batch_size': 32
+    }
+}
+
+MODEL_LOAD_TIMEOUT = 60  # seconds
+MODEL_LOAD_RETRIES = 2
+MODEL_LOAD_RETRY_DELAY = 5  # seconds
+
 # Internationalization
 # https://docs.djangoproject.com/en/{{ docs_version }}/topics/i18n/
 
@@ -243,13 +278,14 @@ CACHES = {
         'LOCATION': 'redis://127.0.0.1:6379/1',
         'OPTIONS': {
             'db': '1',
-            # 'parser_class': 'redis.connection.PythonParser',
+            # 'parser_class': 'redis.connection.HiredisParser',
             'pool_class': 'redis.connection.ConnectionPool',
             'socket_timeout': 5,
             'socket_connect_timeout': 5,
             'retry_on_timeout': True,
             'max_connections': 100,
-        }
+        },
+        'KEY_PREFIX': 'nlp_playground'
     }
 }
 
