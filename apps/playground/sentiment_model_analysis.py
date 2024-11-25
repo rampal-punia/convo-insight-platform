@@ -339,7 +339,7 @@ class SentimentModelManager:
         # Initialize and load model
         self.model = SentimentClassifier(self.config["num_classes"])
         self.model.load_state_dict(
-            torch.load(self.model_dir / "sentiment_model_6cls.pt",
+            torch.load(self.model_dir / "sentiment_model_25Nov24.pt",
                        map_location=torch.device('cpu'))
         )
         self.model.eval()

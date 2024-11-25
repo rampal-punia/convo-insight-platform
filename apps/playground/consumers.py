@@ -1,5 +1,7 @@
 import os
 import json
+import logging
+import traceback
 from typing import List, Dict
 import torch
 from channels.generic.websocket import AsyncWebsocketConsumer
@@ -16,6 +18,7 @@ from langchain_core.prompts import (
     FewShotChatMessagePromptTemplate,
 )
 from bertopic import BERTopic
+from transformers import pipeline
 from sentence_transformers import SentenceTransformer
 from django.db import transaction
 from django.conf import settings
@@ -25,8 +28,34 @@ from .text_classification_rag_processor import RAGProcessorTextClassification
 from .intent_recognitionwith_tr_bert import IntentModelTester
 from .sentiment_model_analysis import SentimentModelManager
 
+logger = logging.getLogger('orders')
 # Force CPU if CUDA is unavailable
 # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+
+class EcommerceSentimentMapper:
+    def __init__(self):
+        # Confidence threshold
+        self.threshold = 0.45
+
+        # Mapping dictionaries
+        self.granular_mapping = {
+            'joy': ('Satisfaction', 'Positive'),
+            'love': ('Gratitude', 'Positive'),
+            'surprise': ('Appreciation', 'Positive'),
+            'sadness': ('Disappointment', 'Negative'),
+            'anger': ('Frustration', 'Negative'),
+            'fear': ('Urgency', 'Negative')
+        }
+
+    def map_sentiment(self, base_sentiment, confidence_score):
+        """Map the base sentiment to e-commerce specific sentiment"""
+        # Default to neutral if below threshold
+        if confidence_score < self.threshold:
+            return 'neutral', 'neutral'
+
+        # Get the mapped sentiments (granular and general)
+        return self.granular_mapping.get(base_sentiment, ('neutral', 'neutral'))
 
 
 class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
@@ -78,6 +107,13 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
             print(f"Error loading topic model: {e}")
             self.topic_model = None
             self.sentence_model = None
+
+        try:
+            self.ner_tag_pipe = pipeline('ner', device=0)
+        except Exception as e:
+            logger.error(f"Error loading NER model: {e}")
+            logger.error(traceback.format_exc())
+            self.ner_tag_pipe = None
 
         # Initialize LLM
         self.llm = ChatOpenAI(
@@ -299,6 +335,37 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
         #     }))
 
     async def analyze_finetuned_sentiment(self, text):
+        """Analyze sentiment of input text"""
+        # Get prediction from your model
+        prediction_results = self.granular_sentiment_model.predict(text)
+
+        # Extract base sentiment and confidence
+        base_sentiment = prediction_results['predictions'][0]
+        confidence_score = prediction_results['confidence'][0]
+
+        # Initialize sentiment mapper
+        mapper = EcommerceSentimentMapper()
+
+        # Get mapped sentiments
+        granular_sentiment, sentiment = mapper.map_sentiment(
+            base_sentiment, confidence_score)
+
+        # Create explanation
+        explanation = (
+            f"For the text: '{text}'\n"
+            f"Overall sentiment: {sentiment}\n"
+            f"Granular Sentiment: {granular_sentiment}\n"
+            f"Confidence: {confidence_score:.2f}"
+        )
+
+        # Return results
+        return {
+            'label': granular_sentiment,
+            'score': str(confidence_score),
+            'explanation': explanation
+        }
+
+    async def analyze_finetuned_sentiment_previous(self, text):
         """Analyze sentiment of input text"""
         # inputs = self.sentiment_tokenizer(
         #     text, return_tensors="pt", truncation=True)
