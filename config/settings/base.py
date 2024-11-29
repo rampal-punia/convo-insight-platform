@@ -30,7 +30,8 @@ DJANGO_APPS = [
 THIRD_PARTY_APPS = [
     #### Third Party Apps #####
     'crispy_forms',
-    # 'rest_framework',
+    'rest_framework',
+    'drf_spectacular',  # for API documentation
     'django_celery_results',
     # 'corsheaders',  # Cross Origin
     'crispy_bootstrap5',
