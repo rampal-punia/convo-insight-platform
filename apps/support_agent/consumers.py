@@ -101,7 +101,7 @@ class SupportAgentConsumer(AsyncWebsocketConsumer):
         try:
             user_input = data.get('message')
             logger.info(f"Received user input: {user_input}")
-            self.config = {
+            config = {
                 "configurable": {
                     "model": settings.GPT_MINI_STRING,
                     "thread_id": self.conversation_id,
@@ -120,7 +120,7 @@ class SupportAgentConsumer(AsyncWebsocketConsumer):
             try:
                 # current_state = graph.get_state(self.config)
                 current_state = graph.get_state(
-                    self.config).values["messages"][-1]
+                    config).values["messages"][-1]
                 logger.info(f"Current state is {current_state}")
 
                 if current_state and current_state.values.get("messages"):
@@ -152,7 +152,7 @@ class SupportAgentConsumer(AsyncWebsocketConsumer):
 
             async for event in graph.astream(
                 initial_state,
-                self.config,
+                config,
                 stream_mode="values"
             ):
                 if "messages" in event:

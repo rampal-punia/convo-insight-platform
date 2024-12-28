@@ -174,6 +174,8 @@ def analyze_text_with_models(text, models):
                 0]
             sentiment = models['sentiment']['model']['label_encoder'].inverse_transform([
                                                                                         int(pred)])[0]
+            print(sentiment, pred)
+            print(sentiment, pred)
             return sentiment, pred
         return 0, 0
 
