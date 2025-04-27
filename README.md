@@ -1,6 +1,6 @@
 # ConvoInsight: Customer Conversational Intelligence Platform
 
-(YouTube Demo)[https://www.youtube.com/watch?v=qECNG5kZP6g&t=50s]
+[YouTube Demo](https://www.youtube.com/watch?v=qECNG5kZP6g&t=50s)
 
 ConvoInsight is a state-of-the-art Customer Conversational Intelligence Platform powered by Large Language Models (LLMs) and advanced Natural Language Processing (NLP) techniques. This platform analyses customer interactions across diverse channels to extract actionable insights, enabling businesses to optimise customer service processes and enhance the overall customer experience.
 
