@@ -1,7 +1,5 @@
 # ConvoInsight: Customer Conversational Intelligence Platform
 
-[YouTube Demo](https://www.youtube.com/watch?v=qECNG5kZP6g&t=50s)
-
 ConvoInsight is a state-of-the-art Customer Conversational Intelligence Platform powered by Large Language Models (LLMs) and advanced Natural Language Processing (NLP) techniques. This platform analyses customer interactions across diverse channels to extract actionable insights, enabling businesses to optimise customer service processes and enhance the overall customer experience.
 
 ## Table of Contents
@@ -218,12 +216,6 @@ For more details on these datasets, please refer to the project documentation.
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Acknowledgements
-
-- This project is part of the **Advanced Certification Course on Computational Data Science at [IISC](https://iisc.ac.in/)** with **[TalentSpirit](https://talentsprint.com/course/computational-data-science-iisc-bangalore)**.
-- We acknowledge the use of open-source libraries and frameworks that made this project possible, including Django, LangChain, Hugging Face Transformers, and BERTopic.
-- Special thanks to the open-source community for their invaluable contributions to the tools and technologies used in this project.
 
 ## Disclaimer
 
