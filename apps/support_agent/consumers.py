@@ -13,7 +13,7 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from django.conf import settings
 from langchain_core.messages import AIMessage, HumanMessage
 from .sa_utils.tool_manager import get_all_tools
-from .sa_utils.state import ECommerseState
+from .sa_utils.state import ECommerceState
 from .sa_utils.graph_builder import graph
 from .sa_utils.prompt_manager import assistant_prompt
 from orders.utils.db_utils import DatabaseOperations
@@ -125,7 +125,7 @@ class SupportAgentConsumer(AsyncWebsocketConsumer):
 
                 if current_state and current_state.values.get("messages"):
                     # Append to existing messages
-                    initial_state = ECommerseState(
+                    initial_state = ECommerceState(
                         messages=[*current_state.values["messages"],
                                   HumanMessage(content=user_input)]
                     )
@@ -133,7 +133,7 @@ class SupportAgentConsumer(AsyncWebsocketConsumer):
                         f"Appended current state to initial state: {initial_state}")
                 else:
                     # Create new state
-                    initial_state = ECommerseState(
+                    initial_state = ECommerceState(
                         messages=[HumanMessage(content=user_input)]
                     )
                     logger.info(
@@ -142,7 +142,7 @@ class SupportAgentConsumer(AsyncWebsocketConsumer):
                 logger.warning(
                     f"Could not get previous state: {e}. Starting fresh.")
                 # Create new state
-                initial_state = ECommerseState(
+                initial_state = ECommerceState(
                     messages=[HumanMessage(content=user_input)]
                 )
                 logger.info(f"Initial state: {initial_state}")
