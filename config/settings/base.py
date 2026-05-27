@@ -300,6 +300,11 @@ SPECTACULAR_SETTINGS = {
     'DESCRIPTION': 'API for the ConvoInsight - Customer Conversational Intelligence Platform',
     'VERSION': '0.2.0',
     'SERVE_INCLUDE_SCHEMA': False,
+    'COMPONENT_SPLIT_REQUEST': True,
+    'SCHEMA_PATH_PREFIX': r'/api/v[0-9]+/',
+    # NOTE: Two cosmetic enum-naming warnings about a shared `status` field across
+    # Order / OrderTracking / Conversation are accepted in Step 1. They do not
+    # affect schema correctness. Will be addressed in Step 2 if needed.
 }
 
 # =============================================================================
