@@ -3,6 +3,7 @@
 These exercise the *routing*, *auth*, and *basic shape* of the new API.
 Heavy domain tests live next to each app.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -20,7 +21,9 @@ pytestmark = pytest.mark.django_db
 
 def test_token_obtain_pair(api_client, user):
     url = reverse("api:v1:auth:token-obtain-pair")
-    resp = api_client.post(url, {"username": user.username, "password": "pw12345"}, format="json")
+    resp = api_client.post(
+        url, {"username": user.username, "password": "pw12345"}, format="json"
+    )
     assert resp.status_code == status.HTTP_200_OK
     assert "access" in resp.data
     assert "refresh" in resp.data
@@ -33,7 +36,9 @@ def test_token_refresh(api_client, user):
         format="json",
     )
     refresh = obtain.data["refresh"]
-    resp = api_client.post(reverse("api:v1:auth:token-refresh"), {"refresh": refresh}, format="json")
+    resp = api_client.post(
+        reverse("api:v1:auth:token-refresh"), {"refresh": refresh}, format="json"
+    )
     assert resp.status_code == status.HTTP_200_OK
     assert "access" in resp.data
 
