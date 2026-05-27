@@ -37,7 +37,7 @@ class InputState:
 
 
 @dataclass
-class ECommerseState(InputState):
+class ECommerceState(InputState):
     """Represents the complete state of the agent, extending InputState with additional attributes.
 
     This class can be used to store any information needed throughout the agent's lifecycle.
