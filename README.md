@@ -1,229 +1,439 @@
 # ConvoInsight: Customer Conversational Intelligence Platform
 
-ConvoInsight is a state-of-the-art Customer Conversational Intelligence Platform powered by Large Language Models (LLMs) and advanced Natural Language Processing (NLP) techniques. This platform analyses customer interactions across diverse channels to extract actionable insights, enabling businesses to optimise customer service processes and enhance the overall customer experience.
+ConvoInsight is a Customer Conversational Intelligence Platform powered by Large Language Models (LLMs) and advanced NLP. It analyses customer interactions across diverse channels — chat, voice, email — to extract actionable insights, enabling businesses to optimise customer service and enhance customer experience.
 
 ## Table of Contents
 
-1. [Project Overview](#project-overview)
-2. [Key Features](#key-features)
+1. [Quick Start](#quick-start)
+2. [Project Overview](#project-overview)
 3. [Technology Stack](#technology-stack)
 4. [Project Structure](#project-structure)
-5. [Key Components](#key-components)
+5. [API Reference](#api-reference)
 6. [Installation](#installation)
-7. [Usage](#usage)
-8. [Current State and TODO](#current-state-and-todo)
-9. [API Documentation](#api-documentation)
+7. [Development](#development)
+8. [Docker](#docker)
+9. [Current State & Roadmap](#current-state--roadmap)
 10. [Contributing](#contributing)
-11. [Datasets](#datasets)
-12. [License](#license)
-13. [Acknowledgements](#acknowledgements)
-14. [Disclaimer](#disclaimer)
+11. [License](#license)
+
+---
+
+## Quick Start
+
+```bash
+# 1. Clone and set up
+git clone https://github.com/rampal-punia/convo-insight-platform.git
+cd convo-insight-platform
+python3.12 -m venv venv
+source venv/bin/activate
+
+# 2. Install dependencies
+cd backend && pip install -r requirements.txt
+
+# 3. Configure environment
+cp ../.env.example ../.env
+# Edit .env — fill in at least OPENAI_API_KEY
+
+# 4. Start infrastructure
+cd .. && docker compose up -d postgres redis
+
+# 5. Set up database
+cd backend
+python manage.py migrate
+python manage.py seed_demo
+
+# 6. Run the backend
+python manage.py runserver
+# → http://localhost:8000
+
+# 7. Run the frontend (new terminal)
+cd frontend && npm install && npm run dev
+# → http://localhost:3000
+```
+
+**Demo credentials**: `demo_admin` / `demo12345` (admin) or `demo_user_01` / `demo12345` (regular user)
+
+---
 
 ## Project Overview
 
-ConvoInsight leverages cutting-edge NLP techniques and Large Language Models to analyze customer conversations from various sources such as chatbots, call centers, emails, and social media. The platform provides real-time insights, including sentiment analysis, intent recognition, topic modeling, and agent performance evaluation.
+ConvoInsight analyses customer conversations using three different NLP approaches:
 
-### Key Objectives
+1. **Fine-tuned BERT** — custom-trained models for sentiment, intent, and topic classification
+2. **Few-shot GPT** — OpenAI GPT-4o-mini with prompt engineering for the same tasks
+3. **RAG with PGVector** — retrieval-augmented generation using vector similarity search
 
-- Develop a robust conversational intelligence platform using Django and Django Channels
-- Implement advanced NLP techniques using LangChain and custom LLM models
-- Provide real-time analysis and recommendations for customer service interactions
-- Create a scalable and efficient system using Celery for background task processing
-- Utilize PostgreSQL with pgvector for efficient storage and retrieval of conversation data and embeddings
-- Integrate with SageMaker for ML workflow automation and model deployment
+The platform includes a **LangGraph-based support agent** that handles e-commerce customer support conversations with tool use (order tracking, modifications, cancellations) and real-time streaming responses via WebSockets.
 
-## Key Features
+### Key Capabilities
 
-- Multi-channel conversation analysis (chat, voice, email, social media)
+- Multi-channel conversation analysis (chat, voice, email)
 - Real-time sentiment analysis with granular emotion detection
-- Intent recognition for tailored responses
-- Topic modeling and trend identification
+- Intent recognition and topic modeling
+- LLM-powered customer support agent with tool use
 - Agent performance evaluation
-- LLM-driven real-time recommendations for customer service agents
-- Interactive dashboards for insights visualization
-- Scalable architecture for handling large volumes of conversations
-- Fine-tuning capabilities for LLM models
-- Integration with SageMaker for model training, deployment, and monitoring
-- General AI assistant functionality with text and voice input
-- Order management system with integrated support chat
+- Interactive dashboard with analytics
+- E-commerce order management with integrated support chat
+
+---
 
 ## Technology Stack
 
-- **Backend Framework**: Django
-- **Asynchronous Support**: Django Channels
-- **Database**: PostgreSQL with pgvector extension
-- **Task Queue**: Celery with Redis as message broker
-- **LLM Integration And LLM-Agent Creation**: LangChain and LangGraph
-- **Web Servers**: ASGI (Daphne) for WebSocket, WSGI (Gunicorn) for HTTP
-- **Frontend**: Next.js (App Router, JSX)
-- **Containerization**: Docker (for deployment)
-- **Machine Learning**:
-  - Custom fine-tuned LLM models
-  - SageMaker for ML workflow automation
-  - Hugging Face models for various NLP tasks
-- **NLP Libraries**: NLTK, Gensim, transformers, BERTopic
-- **Cloud Integration**: AWS S3 for data storage
+| Layer | Technology | Notes |
+|-------|-----------|-------|
+| **Backend** | Django 6.0 + Django REST Framework 3.17 | Versioned REST API at `/api/v1/` |
+| **Async** | Django Channels 4.3 + Daphne 4.2 | WebSocket support for real-time chat |
+| **Auth** | simplejwt + allauth | JWT tokens + social login |
+| **Database** | PostgreSQL 17 + pgvector | Relational + vector similarity search |
+| **Task Queue** | Celery 5.6 + Redis 7 | Background processing |
+| **LLM** | LangChain 1.3 + LangGraph 1.2 | Agent orchestration, tool use |
+| **ML** | PyTorch 2.12 + Transformers 5.9 | Fine-tuned BERT models |
+| **API Docs** | drf-spectacular 0.29 | OpenAPI 3 + Swagger + Redoc |
+| **Frontend** | Next.js 15 (App Router, JSX) | TailwindCSS |
+| **CI/CD** | GitHub Actions | Lint, test, build, security scan |
+| **Containers** | Docker (multi-stage) + Compose | Postgres, Redis, Daphne, Celery |
+
+---
 
 ## Project Structure
 
 ```
 convo-insight-platform/
-├── backend/               # Django backend
-│   ├── config/            # Main Django project directory
-│   ├── apps/              # Django apps
-│   │   ├── accounts/      # User account management
-│   │   ├── analysis/      # Analysis and metrics calculation
-│   │   ├── api/           # API endpoints
-│   │   ├── convochat/     # Core conversation handling
-│   │   ├── dashboard/     # User dashboard and visualization
-│   │   ├── general_assistant/ # General AI assistant functionality
-│   │   ├── llms/          # LLM development, integration and management
-│   │   ├── orders/        # Order management
-│   │   └── products/      # Product management
-│   ├── data_processing/   # Scripts for data ingestion and preprocessing
-│   ├── static/            # Static files (CSS, JS, images)
-│   ├── scripts/           # Utility scripts (DB init, etc.)
+├── backend/                    # Django backend
+│   ├── config/                 # Project settings, URLs, ASGI/WSGI, Celery
+│   │   └── settings/
+│   │       ├── base.py         # Shared settings (sys.path trick, DRF, JWT)
+│   │       ├── development.py  # Local dev overrides
+│   │       ├── production.py   # Production overrides
+│   │       └── test.py         # Test overrides
+│   ├── apps/
+│   │   ├── accounts/           # User management
+│   │   ├── products/           # Product catalogue + categories
+│   │   ├── orders/             # Order management + LangGraph agent
+│   │   ├── convochat/          # Core conversations, messages, NLP models
+│   │   ├── analysis/           # Metrics, agent performance, recommendations
+│   │   ├── api/                # DRF API layer
+│   │   │   └── v1/             # Versioned endpoints (21 ViewSets)
+│   │   ├── dashboard/          # Dashboard + seed_demo command
+│   │   ├── playground/         # NLP playground (BERT, GPT, RAG methods)
+│   │   ├── support_agent/      # LangGraph e-commerce support agent
+│   │   ├── general_assistant/  # General AI assistant (text + voice)
+│   │   └── llms/               # LLM fine-tuning + SageMaker integration
+│   ├── data_processing/        # Data ingestion scripts
+│   ├── scripts/                # DB init SQL
+│   ├── ml_models/              # Trained model files (gitignored)
+│   ├── static/                 # Static assets
 │   ├── manage.py
 │   ├── requirements.txt
-│   ├── conftest.py
-│   └── pyproject.toml
-├── frontend/              # Next.js frontend
-├── docker-compose.yml
-├── Dockerfile
-├── Makefile
-├── CONTRIBUTING.md
+│   ├── conftest.py             # Shared pytest fixtures
+│   └── pyproject.toml          # Ruff, pytest, coverage config
+├── frontend/                   # Next.js 15 (JSX, App Router)
+│   ├── src/
+│   │   ├── app/                # Pages (login, products)
+│   │   └── lib/                # API client with JWT refresh
+│   └── README.md
+├── docs/                       # Project documentation
+│   └── INTERN_ONBOARDING.md    # Intern onboarding guide
+├── docker-compose.yml          # Postgres, Redis, Daphne, Celery
+├── Dockerfile                  # Multi-stage build
+├── Makefile                    # All common commands
+├── .env.example                # Environment variable template
 └── README.md
 ```
 
-## Key Components
+---
 
-- **LLM Configuration and Integration**: Utilizes LangChain for LLM integration with support for multiple Hugging Face models (Mistral, Mixtral)
-- **Real-time Communication**: Uses Django Channels for WebSocket support in chat functionality
-- **Background Tasks**: Celery tasks for processing conversations, generating metrics, and managing ML workflows
-- **Performance Evaluation**: AgentPerformanceEvaluator for assessing conversation quality
-- **NLP Tasks**: Sentiment analysis, intent recognition, and topic modeling using various ML and deep learning models
-- **Data Storage and Retrieval**: PostgreSQL with pgvector for efficient vector storage and similarity search
+## API Reference
+
+Interactive docs available at `http://localhost:8000/api/docs/` (Swagger) and `http://localhost:8000/api/redoc/` (Redoc) when the server is running.
+
+### Authentication
+
+```
+POST /api/v1/auth/token/          # Obtain JWT pair (access + refresh)
+POST /api/v1/auth/token/refresh/  # Refresh access token
+POST /api/v1/auth/token/verify/   # Verify token is valid
+POST /api/v1/auth/token/blacklist/ # Blacklist a refresh token
+```
+
+All authenticated endpoints require `Authorization: Bearer <access_token>`.
+
+### Products & Categories
+
+```
+GET    /api/v1/products/           # List products (paginated, filterable)
+POST   /api/v1/products/           # Create product
+GET    /api/v1/products/{id}/      # Retrieve product
+GET    /api/v1/products/in-stock/  # Products with stock > 0
+GET    /api/v1/products/low-stock/ # Products with stock < 10
+GET    /api/v1/categories/         # List categories
+GET    /api/v1/categories/{id}/products/  # Products in a category
+```
+
+### Orders
+
+```
+GET    /api/v1/orders/             # List orders (paginated)
+POST   /api/v1/orders/             # Create order
+GET    /api/v1/orders/{id}/        # Retrieve order with items
+GET    /api/v1/orders/{id}/tracking/     # Order tracking events
+POST   /api/v1/orders/{id}/tracking/add/ # Add tracking event
+GET    /api/v1/orders/{id}/items/        # Order line items
+```
+
+### Conversations & Messages
+
+```
+GET    /api/v1/conversations/      # List conversations
+POST   /api/v1/conversations/      # Start a conversation
+GET    /api/v1/conversations/{id}/ # Retrieve with messages
+GET    /api/v1/conversations/{id}/messages/  # Paginated messages
+POST   /api/v1/conversations/{id}/archive/   # Archive conversation
+POST   /api/v1/conversations/{id}/end/       # End conversation
+```
+
+### NLP Analysis
+
+```
+POST   /api/v1/nlp/sentiment/     # Sentiment analysis (BERT / GPT / RAG)
+POST   /api/v1/nlp/intent/        # Intent recognition
+POST   /api/v1/nlp/topic/         # Topic modeling
+POST   /api/v1/nlp/ner/           # Named entity recognition
+GET    /api/v1/topics/trending/   # Trending topics
+```
+
+### Analysis & Metrics
+
+```
+GET    /api/v1/agent-performance/      # LLM agent performance records
+GET    /api/v1/conversation-metrics/   # Conversation metrics
+GET    /api/v1/recommendations/        # Agent recommendations
+GET    /api/v1/intent-predictions/     # Intent prediction records
+GET    /api/v1/topic-distributions/    # Topic distribution records
+```
+
+### Users
+
+```
+GET    /api/v1/users/              # List users (admin only)
+GET    /api/v1/users/{id}/         # Retrieve user profile
+```
+
+---
 
 ## Installation
 
-1. Clone the repository:
-   ```
-   git clone https://github.com/rampal-punia/convo-insight-platform.git
-   cd convo-insight-platform
-   ```
+### Prerequisites
 
-2. Set up a virtual environment:
-   ```
-   python -m venv venv
-   source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
-   ```
+- Python 3.11+
+- Node.js 18+
+- Docker & Docker Compose
+- Git
 
-3. Install dependencies:
-   ```
-   cd backend && pip install -r requirements.txt
-   ```
+### 1. Clone and set up virtual environment
 
-4. Set up PostgreSQL and create a database for the project.
+```bash
+git clone https://github.com/rampal-punia/convo-insight-platform.git
+cd convo-insight-platform
+python3 -m venv venv
+source venv/bin/activate
+```
 
-5. Install the pgvector extension in your PostgreSQL database.
+### 2. Install backend dependencies
 
-6. Set up environment variables (copy `.env.example` to `.env` at the repo root and fill in your values).
+```bash
+cd backend && pip install -r requirements.txt
+```
 
-7. Run migrations:
-   ```
-   cd backend && python manage.py migrate
-   ```
+### 3. Configure environment
 
-8. Start the development server:
-   ```
-   cd backend && python manage.py runserver
-   ```
+```bash
+cp .env.example .env
+```
 
-## Usage
+Edit `.env` and fill in at minimum:
+- `OPENAI_API_KEY` — required for GPT-based NLP and LangGraph agent
+- `HUGGINGFACEHUB_API_TOKEN` — required for HuggingFace model access
+- `TAVILY_API_KEY` — required for web search tool in support agent
 
-1. Access the admin interface at `http://localhost:8000/admin/` to manage data and configurations.
+### 4. Start infrastructure services
 
-2. Use the API endpoints to interact with the platform programmatically.
+```bash
+docker compose up -d postgres redis
+```
 
-3. Access the frontend interface at `http://localhost:8000/` to view dashboards and insights.
+This starts:
+- **PostgreSQL 17** on `localhost:5433` with pgvector extension
+- **Redis 7** on `localhost:6380`
 
-4. To start a new conversation, navigate to `http://localhost:8000/convochat/new/`.
+### 5. Initialize database
 
-5. To create dummy data for testing:
-   ```
-   cd backend
-   python manage.py create_random_users 50
-   python manage.py generate_dummy_data
-   ```
+```bash
+cd backend
+python manage.py migrate
+python manage.py seed_demo
+```
 
-6. To fine-tune the LLM model:
-   ```
-   cd backend && python manage.py fine_tune_llm
-   ```
+The `seed_demo` command creates sample categories, products, demo users, and orders.
 
-7. To train and deploy a model using SageMaker:
-   ```
-   cd backend && python manage.py train_deploy_model [model_type] [script_path] [train_data_path] [output_path] [endpoint_name]
-   ```
+### 6. Run the development server
 
-8. To monitor model performance:
-   ```
-   cd backend && python manage.py monitor_model [endpoint_name]
-   ```
+```bash
+python manage.py runserver
+```
 
-## Current State and TODO
+Visit:
+- **Swagger UI**: http://localhost:8000/api/docs/
+- **Admin**: http://localhost:8000/admin/ (`demo_admin` / `demo12345`)
+- **API root**: http://localhost:8000/api/v1/
 
-### Current State:
-- Basic dashboard with general assistance and customer support interactions
-- User authentication and profile management
-- General AI assistant with text and voice input
-- Initial implementation of NLP tasks (sentiment analysis, intent recognition, topic modeling)
-- SageMaker integration setup (pending authentication)
-- Order and product management systems
+### 7. Run the frontend
 
-### TODO:
-1. Implement the main Customer Support chat pipeline with real-time NLP analysis
-2. Develop and integrate more advanced NLP models using transformers
-3. Enhance the dashboard with detailed analysis and visualizations
-4. Develop comprehensive API endpoints
-5. Implement more robust error handling and logging
-6. Enhance test coverage
-7. Optimize database queries and indexing
-8. Implement more sophisticated recommendation systems
-9. Enhance voice processing capabilities
-10. Develop a comprehensive admin interface for system management
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-For a complete list of TODO items, please refer to the project documentation.
+Visit http://localhost:3000
 
-## API Documentation
+---
 
-Detailed API documentation can be found at `/api/docs/` when running the server. Key endpoints include:
-- `/api/conversations/`: Upload and retrieve conversation data
-- `/api/analysis/sentiment/`: Get sentiment analysis for conversations
-- `/api/analysis/intent/`: Get intent recognition results
-- `/api/analysis/topics/`: Get topic modeling results
-- `/api/recommendations/`: Get real-time recommendations for agents
+## Development
+
+### Common Commands
+
+All Python/Django commands run from `backend/`. Use `make` from the repo root for convenience.
+
+```bash
+# From repo root using Make
+make runserver          # Start Django dev server
+make migrate            # Run migrations
+make makemigrations     # Create new migrations
+make test               # Run pytest
+make test-cov           # Run tests with coverage
+make lint               # Lint and auto-fix with ruff
+make seed               # Seed demo data
+make shell              # Django shell
+
+# Or directly from backend/
+cd backend
+python manage.py runserver
+python manage.py migrate
+pytest
+ruff check .
+celery -A config worker -l info
+celery -A config beat -l info
+```
+
+### Running the Full Stack
+
+```bash
+# Terminal 1: Infrastructure
+docker compose up -d postgres redis
+
+# Terminal 2: Django
+cd backend && python manage.py runserver
+
+# Terminal 3: Celery worker
+cd backend && celery -A config worker -l info
+
+# Terminal 4: Celery beat (optional, for scheduled tasks)
+cd backend && celery -A config beat -l info
+
+# Terminal 5: Frontend
+cd frontend && npm run dev
+```
+
+### Code Style
+
+- **Line length**: 120, single quotes (enforced by ruff)
+- **Imports**: `from <app> import ...` for sibling apps (the `apps/` directory is on `sys.path`)
+- **JSX only** in the frontend — no TypeScript files
+- Run `make lint` before committing
+
+### Testing
+
+```bash
+cd backend
+
+# Run all tests
+pytest
+
+# Run with verbose output
+pytest -v
+
+# Run specific test file
+pytest apps/api/v1/tests/test_smoke.py -v
+
+# Run with coverage
+pytest --cov=apps --cov-report=term-missing
+```
+
+---
+
+## Docker
+
+### Development (infrastructure only)
+
+```bash
+docker compose up -d postgres redis
+```
+
+### Full stack via Docker
+
+```bash
+docker compose up -d           # Starts all services
+docker compose logs -f web     # Follow Django logs
+docker compose down            # Stop everything
+docker compose down -v         # Stop and remove volumes (full reset)
+```
+
+### Building
+
+```bash
+docker compose build           # Build the backend image
+make build                     # Same thing via Make
+```
+
+---
+
+## Current State & Roadmap
+
+### What Works Now
+
+- Full REST API with 21 ViewSets, JWT auth, and OpenAPI docs
+- NLP analysis pipeline (sentiment, intent, topic, NER) via three methods
+- LangGraph support agent with tool use and WebSocket streaming
+- E-commerce models (products, orders, categories, tracking)
+- Docker Compose for local infrastructure
+- CI pipeline (lint, test, build, security scan)
+- Next.js frontend skeleton with login and products page
+
+### Roadmap
+
+1. **Test coverage** — unit + integration tests for all apps (currently 12 smoke tests)
+2. **Code cleanup** — remove dead code, replace `print()` with logging, fix typos
+3. **Frontend pages** — dashboard, chat interface, orders management, analytics
+4. **Multi-agent orchestration** — separate agents for billing, tech support, orders
+5. **RAG enhancement** — chunking strategies, hybrid search, reranking
+6. **Voice upgrade** — migrate to Whisper for speech recognition
+
+---
 
 ## Contributing
 
-We welcome contributions to ConvoInsight! Please refer to our [CONTRIBUTING.md](CONTRIBUTING.md) file for detailed guidelines on how to contribute to the project.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide. Key points:
 
-## Datasets
-
-The project utilizes the following datasets for training and testing:
-
-1. Relational Strategies in Customer Interactions (RSiCS)
-2. 3K Conversations Dataset for ChatBot from Kaggle
-3. Customer Support on Twitter Dataset from Kaggle
-
-For more details on these datasets, please refer to the project documentation.
+- Branch from `development`, PR against `development`
+- Every PR must include tests
+- Run `make lint && make test` before pushing
+- Single quotes, 120 char line length
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
 
 ## Disclaimer
 
-This project is intended as a learning exercise and demonstration of integrating various technologies. While it showcases the integration of Django, Django Channels, LangChain, Hugging Face models, and AWS SageMaker, it is not designed or tested for production use. It serves as an educational resource and a showcase of technology integration rather than a production-ready web application.
-
-Contributors and users are welcome to explore, learn from, and build upon this project for educational purposes. However, please exercise caution and perform thorough testing and security audits before considering any aspects of this project for production environments.
+This project is intended as a learning exercise and demonstration of technology integration. It is not designed or tested for production use. Please perform thorough testing and security audits before considering any aspects for production environments.
