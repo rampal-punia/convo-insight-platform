@@ -10,14 +10,14 @@
 services:
   # --- PostgreSQL Database ---
   postgres:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     container_name: convoinsight-postgres
     environment:
       POSTGRES_DB: ${DB_NAME:-convoinsight}
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
     ports:
-      - "${DB_PORT:-5432}:5432"
+      - "${DB_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
@@ -33,7 +33,7 @@ services:
     image: redis:7-alpine
     container_name: convoinsight-redis
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis_data:/data
     healthcheck:
