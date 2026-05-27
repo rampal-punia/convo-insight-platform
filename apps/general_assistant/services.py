@@ -1,3 +1,5 @@
+import logging
+
 from django.core.files.base import ContentFile
 from django.conf import settings
 from PIL import Image
@@ -11,6 +13,8 @@ import speech_recognition as sr
 from gtts import gTTS
 import tempfile
 import soundfile as sf
+
+logger = logging.getLogger('general_assistant')
 
 API_URL = "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-large"
 headers = {"Authorization": f"Bearer {settings.HUGGINGFACEHUB_API_TOKEN}"}
@@ -114,10 +118,11 @@ class ImageModalHandler:
 
     @staticmethod
     def update_image_message(image_message, image_array, image_description):
-        print(
-            type(image_message),
-            type(image_array),
-            type(image_description),
+        logger.debug(
+            "Updating image message: msg=%s, arr=%s, desc=%s",
+            type(image_message).__name__,
+            type(image_array).__name__,
+            type(image_description).__name__,
         )
         # Convert numpy array to PIL Image
         img = Image.fromarray(cv2.cvtColor(image_array, cv2.COLOR_BGR2RGB))
