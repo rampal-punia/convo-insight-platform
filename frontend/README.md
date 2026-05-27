@@ -11,12 +11,12 @@ npm install
 npm run dev                       # http://localhost:3000
 ```
 
-The backend must be running (`make up` or `python manage.py runserver`) and you should
-seed demo data first:
+The backend must be running (`make up` or `cd backend && python manage.py runserver`)
+and you should seed demo data first:
 
 ```bash
 # From the repo root, with your venv active:
-python manage.py seed_demo
+cd backend && python manage.py seed_demo
 ```
 
 Then log in at `http://localhost:3000/login` with username `demo_user_01` and password
