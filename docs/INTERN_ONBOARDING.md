@@ -13,13 +13,14 @@ git clone <repo>
 cd convo-insight-platform
 python3.12 -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env       # fill in OPENAI_API_KEY at minimum
+cd backend && pip install -r requirements.txt
+cp ../.env.example ../.env       # fill in OPENAI_API_KEY at minimum
 
 # 2. Start the stack (Postgres + Redis)
-docker compose up -d postgres redis
+cd .. && docker compose up -d postgres redis
 
 # 3. Migrate, seed, run
+cd backend
 python manage.py migrate
 python manage.py seed_demo
 python manage.py runserver
@@ -28,7 +29,7 @@ python manage.py runserver
 #    http://localhost:8000/api/docs/      (Swagger UI)
 #    http://localhost:8000/admin/         (Django admin — log in as demo_admin / demo12345)
 
-# 5. Frontend
+# 5. Frontend (open a new terminal)
 cd frontend && npm install && npm run dev
 #    http://localhost:3000
 ```
@@ -42,7 +43,7 @@ cd frontend && npm install && npm run dev
 - [ ] Read `README.md` and `CONTRIBUTING.md`.
 - [ ] Run the full stack locally (steps above). Log in to admin, browse Swagger UI.
 - [ ] Spend an hour clicking through Swagger — try `GET /api/v1/products/`, `POST /api/v1/auth/token/`.
-- [ ] Run the test suite: `pytest apps/api/v1/tests/ -v`. All 12 tests should pass.
+- [ ] Run the test suite: `cd backend && pytest apps/api/v1/tests/ -v`. All 12 tests should pass.
 - [ ] Open the Django admin and walk through every model: Products, Orders, Conversations, Messages, Topics.
 - [ ] Map the request lifecycle for one URL of your choice — from `config/urls.py` to a viewset to a serializer to the DB.
 
@@ -107,29 +108,31 @@ For each one:
 
 ## Day-to-day commands
 
-| Need                        | Command                                                          |
-| --------------------------- | ---------------------------------------------------------------- |
-| Run dev server              | `python manage.py runserver`                                     |
-| Run worker                  | `celery -A config worker -l info`                                |
-| Run beat                    | `celery -A config beat -l info`                                  |
-| Tests                       | `pytest`                                                         |
-| Tests with coverage         | `coverage run -m pytest && coverage report`                      |
-| Lint / format               | `ruff check . && ruff format .`                                  |
-| Generate OpenAPI            | `python manage.py spectacular --file /tmp/schema.yml`            |
-| Seed demo data              | `python manage.py seed_demo`                                     |
-| Wipe + reseed               | `python manage.py seed_demo --reset`                             |
-| Open shell                  | `python manage.py shell_plus`                                    |
-| Make + apply migrations     | `python manage.py makemigrations && python manage.py migrate`    |
-| Frontend dev                | `cd frontend && npm run dev`                                     |
+All Django/Python commands run from the `backend/` directory. Use `make` from the repo root for convenience.
+
+| Need                        | Command (from `backend/`)                                        | Make target (from root) |
+| --------------------------- | ---------------------------------------------------------------- | ----------------------- |
+| Run dev server              | `python manage.py runserver`                                     | `make runserver`        |
+| Run worker                  | `celery -A config worker -l info`                                | `make celery-worker`    |
+| Run beat                    | `celery -A config beat -l info`                                  | `make celery-beat`      |
+| Tests                       | `pytest`                                                         | `make test`             |
+| Tests with coverage         | `coverage run -m pytest && coverage report`                      | `make test-cov`         |
+| Lint / format               | `ruff check . && ruff format .`                                  | `make lint`             |
+| Generate OpenAPI            | `python manage.py spectacular --file /tmp/schema.yml`            | —                       |
+| Seed demo data              | `python manage.py seed_demo`                                     | `make seed`             |
+| Wipe + reseed               | `python manage.py seed_demo --reset`                             | —                       |
+| Open shell                  | `python manage.py shell_plus`                                    | `make shell`            |
+| Make + apply migrations     | `python manage.py makemigrations && python manage.py migrate`    | `make makemigrations`   |
+| Frontend dev                | `cd frontend && npm run dev` (from root)                         | —                       |
 
 ---
 
 ## Code conventions
 
-- **Line length**: 120, single quotes (enforced by ruff). See `pyproject.toml`.
+- **Line length**: 120, single quotes (enforced by ruff). See `pyproject.toml` in `backend/`.
 - **Imports**: `from <app> import …` for sibling apps (the `apps/` directory is on sys.path).
 - **Migrations**: always commit. Never edit a migration that has been applied in CI.
-- **Secrets**: never commit `.env`. Use `.env.example` as the template.
+- **Secrets**: never commit `.env`. Use `.env.example` (at repo root) as the template.
 - **Tests live next to code**: `apps/<app>/tests/test_*.py` or `apps/api/v1/tests/test_*.py`.
 
 ---
