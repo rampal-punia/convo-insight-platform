@@ -6,7 +6,7 @@
 # =============================================================================
 
 # ---- Stage 1: Builder ----
-FROM python:3.11-slim AS builder
+FROM python:3.12-slim AS builder
 
 WORKDIR /build
 
@@ -21,14 +21,16 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 # ---- Stage 2: Runtime ----
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 LABEL maintainer="Rampal Punia"
 LABEL description="ConvoInsight - Customer Conversational Intelligence Platform"
 
-# Install runtime dependencies
+# Install runtime dependencies (postgresql-client provides pg_isready used by
+# the entrypoint health-check).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
+    postgresql-client \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -67,4 +69,6 @@ RUN chmod +x /docker-entrypoint.sh
 USER appuser
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3"]
+# Use daphne ASGI server so HTTP and WebSocket traffic share one port.
+# Override at runtime with: docker run ... gunicorn config.wsgi:application
+CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "config.asgi:application"]
