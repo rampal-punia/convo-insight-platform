@@ -3,19 +3,20 @@ set -e
 
 echo "=== ConvoInsight Platform Entrypoint ==="
 
-# Wait for PostgreSQL
-echo "Waiting for PostgreSQL..."
-while ! curl -s http://${DB_HOST}:${DB_PORT:-5432} > /dev/null 2>&1; do
-    # pg_isready would be better but curl works as fallback
+# Wait for PostgreSQL using pg_isready (TCP HTTP curl was broken - postgres
+# does not speak HTTP).
+echo "Waiting for PostgreSQL at ${DB_HOST:-localhost}:${DB_PORT:-5432}..."
+until pg_isready -h "${DB_HOST:-localhost}" -p "${DB_PORT:-5432}" -U "${DB_USER:-postgres}" > /dev/null 2>&1; do
     sleep 1
 done
+echo "PostgreSQL is ready."
 
-# Wait for Redis
-echo "Waiting for Redis..."
-while ! curl -s http://${REDIS_HOST:-localhost}:${REDIS_PORT:-6379} > /dev/null 2>&1; do
+# Wait for Redis using a TCP probe (no Python deps required).
+echo "Waiting for Redis at ${REDIS_HOST:-localhost}:${REDIS_PORT:-6379}..."
+until (echo > /dev/tcp/"${REDIS_HOST:-localhost}"/"${REDIS_PORT:-6379}") > /dev/null 2>&1; do
     sleep 1
 done
-echo "Dependencies ready!"
+echo "Redis is ready."
 
 # Run Django management commands
 echo "Running database migrations..."
@@ -24,6 +25,6 @@ python manage.py migrate --noinput
 echo "Collecting static files..."
 python manage.py collectstatic --noinput 2>/dev/null || true
 
-# Execute the main command
-echo "Starting application..."
+# Execute the main command (defaults to daphne ASGI server so WebSockets work).
+echo "Starting application: $*"
 exec "$@"
