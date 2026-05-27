@@ -22,7 +22,7 @@ from .configuration import Configuration
 from .prompt_manager import PromptManager
 from .tool_manager import get_sensitive_tool_names, get_all_tools
 from .tool_manager import TOOLS
-from .state import InputState, ECommerseState
+from .state import InputState, ECommerceState
 from .helper import load_chat_model
 
 logger = logging.getLogger('orders')
@@ -32,7 +32,7 @@ logger = logging.getLogger('orders')
 
 
 async def call_model(
-    state: ECommerseState, config: RunnableConfig
+    state: ECommerceState, config: RunnableConfig
 ) -> Dict[str, List[AIMessage]]:
     """Call the LLM powering our "agent".
 
@@ -95,7 +95,7 @@ async def call_model(
         }
 
 # Define the graph
-builder = StateGraph(ECommerseState, input=InputState,
+builder = StateGraph(ECommerceState, input=InputState,
                      config_schema=Configuration)
 
 # Add nodes
@@ -106,7 +106,7 @@ builder.add_node("tools", ToolNode(TOOLS))
 builder.add_edge("__start__", "call_model")
 
 
-def route_model_output(state: ECommerseState) -> Literal["__end__", "tools"]:
+def route_model_output(state: ECommerceState) -> Literal["__end__", "tools"]:
     """Determine the next node based on the model's output.
 
     This function checks if the model's last message contains tool calls.
