@@ -1,0 +1,6 @@
+{
+    "model_type": "roberta-base",
+    "max_length": 128,
+    "num_classes": 6,
+    "version": "1.0"
+}
