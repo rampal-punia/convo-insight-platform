@@ -8,7 +8,7 @@ from decouple import config
 DEBUG = True
 
 STATIC_ROOT = None
-STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
+STATICFILES_STORAGE = "django.contrib.staticfiles.storage.StaticFilesStorage"
 
 ALLOWED_HOSTS = [
     "127.0.0.1",
@@ -17,7 +17,9 @@ ALLOWED_HOSTS = [
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = config(
-    'DJANGO_SECRET_KEY', 'django-insecure-p!1w7j+^j5v8y-@$_9j*8mr-)l#$u=08=c)!=(b1dleci18$7+')
+    "DJANGO_SECRET_KEY",
+    "django-insecure-p!1w7j+^j5v8y-@$_9j*8mr-)l#$u=08=c)!=(b1dleci18$7+",
+)
 
 # INSTALLED_APPS += [
 #     'debug_toolbar',
@@ -40,18 +42,28 @@ AUTH_PASSWORD_VALIDATORS = []
 
 # Postgres
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': config('DB_NAME'),
-        'USER': config('DB_USER'),
-        'PASSWORD': config('DB_PASSWORD'),
-        'HOST': config('DB_HOST', 'localhost'),
-        'PORT': config('DB_PORT'),
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": config("DB_NAME"),
+        "USER": config("DB_USER"),
+        "PASSWORD": config("DB_PASSWORD"),
+        "HOST": config("DB_HOST", "localhost"),
+        "PORT": config("DB_PORT"),
     }
 }
 
 # For development only. Configure more strictly for production.
 CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_CREDENTIALS = True
+# Explicit allowlist used when CORS_ALLOW_ALL_ORIGINS is disabled (staging/prod).
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
 
 
 # DEBUG_TOOLBAR_PANELS = [
