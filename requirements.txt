@@ -1,87 +1,80 @@
-# =============================================================================
-# ConvoInsight Platform - Python Dependencies
-# =============================================================================
-# Organized by category. All versions pinned for reproducibility.
-# Install: pip install -r requirements.txt
-# =============================================================================
-
 # --- Core Django ---
-Django==5.1.4
-djangorestframework==3.15.2
-django-filter==24.3
-django-crispy-forms==2.3
-crispy-bootstrap5==2024.2
-django-allauth==65.3.0
-django-cleanup==9.0.0
-django-jazzmin==3.0.1
-django-cors-headers==4.6.0
-django-celery-beat==2.7.0
-django-celery-results==2.5.1
-drf-spectacular==0.28.0
-python-decouple==3.8
+Django
+djangorestframework
+django-filter
+django-crispy-forms
+crispy-bootstrap5
+django-allauth
+django-cleanup
+django-jazzmin
+django-cors-headers
+django-celery-beat
+django-celery-results
+drf-spectacular
+python-decouple
 
 # --- Database ---
-psycopg2-binary==2.9.10
+psycopg2-binary
 
 # --- Async / WebSocket ---
-channels==4.2.0
-channels-redis==4.2.1
-daphne==4.1.2
+channels
+channels-redis
+daphne
 
 # --- Task Queue ---
-celery==5.4.0
-redis==5.2.1
+celery
+redis
 
 # --- AI / ML: LLMs & Agents ---
-langchain==0.3.14
-langchain-core==0.3.28
-langchain-openai==0.3.0
-langchain-community==0.3.14
-langchain-huggingface==0.1.2
-langchain-text-splitters==0.3.5
-langgraph==0.2.60
-langsmith==0.2.10
+langchain
+langchain-core
+langchain-openai
+langchain-community
+langchain-huggingface
+langchain-text-splitters
+langgraph
+langsmith
 
 # --- AI / ML: NLP Models ---
-transformers==4.47.1
-sentence-transformers==3.3.1
-tokenizers==0.21.0
-huggingface-hub==0.27.1
-bertopic==0.16.4
-safetensors==0.4.5
-torch==2.5.1
-scikit-learn==1.6.1
-numpy==2.2.1
+transformers
+sentence-transformers
+tokenizers
+huggingface-hub
+bertopic
+safetensors
+torch
+scikit-learn
+numpy
 
 # --- AI / ML: Voice ---
-SpeechRecognition==3.14.1
-gTTS==2.5.4
-librosa==0.10.2.post1
-soundfile==0.13.0
+SpeechRecognition
+gTTS
+librosa
+soundfile
 
 # --- AI / ML: Image ---
-Pillow==11.1.0
+Pillow
 
 # --- Utilities ---
-requests==2.32.3
-python-dateutil==2.9.0
-pydantic==2.10.4
-orjson==3.10.12
-click==8.1.8
-tenacity==9.0.0
-tqdm==4.67.1
-joblib==4.2.1
-packaging==24.2
-filelock==3.16.1
-fsspec==2024.12.0
-regex==2024.11.6
-PyYAML==6.0.2
-jsonpatch==1.33
-jsonpointer==3.0.0
-jsonschema==4.23.0
+requests
+python-dateutil
+pydantic
+orjson
+click
+tenacity
+tqdm
+joblib
+packaging
+filelock
+fsspec
+regex
+PyYAML
+jsonpatch
+jsonpointer
+jsonschema
 
 # --- Server ---
-gunicorn==23.0.0
+gunicorn
 
 # --- Dev / Debug ---
-django-debug-toolbar==4.4.6
+django-debug-toolbar
