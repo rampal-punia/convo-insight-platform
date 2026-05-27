@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python packages
-COPY requirements.txt .
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 # ---- Stage 2: Runtime ----
@@ -42,8 +42,8 @@ WORKDIR /app
 # Copy Python packages from builder
 COPY --from=builder /install /usr/local
 
-# Copy application code
-COPY . .
+# Copy backend application code
+COPY backend/ .
 
 # Create necessary directories
 RUN mkdir -p /app/logs /app/staticfiles /app/media && \
@@ -63,7 +63,7 @@ HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
     CMD curl -f http://localhost:8000/health/ || exit 1
 
 # Use entrypoint script
-COPY docker-entrypoint.sh /docker-entrypoint.sh
+COPY backend/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
 USER appuser
