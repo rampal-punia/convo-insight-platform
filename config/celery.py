@@ -2,7 +2,10 @@
 
 from celery import Celery
 from celery.schedules import crontab
+import logging
 import os
+
+logger = logging.getLogger('celery')
 
 # Set the default Django settings module for the 'celery' program.
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings.development')
@@ -21,7 +24,7 @@ app.autodiscover_tasks()
 
 @app.task(bind=True, ignore_result=True)
 def debug_task(self):
-    print(f'Request: {self.request!r}')
+    logger.info(f'Request: {self.request!r}')
 
 
 app.conf.beat_schedule = {
