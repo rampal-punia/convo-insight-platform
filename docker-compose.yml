@@ -20,7 +20,7 @@ services:
       - "${DB_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+      - ./backend/scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
       interval: 10s
@@ -65,7 +65,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - .:/app
+      - ./backend:/app
       - static_data:/app/staticfiles
       - media_data:/app/media
     depends_on:
@@ -94,7 +94,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       HUGGINGFACEHUB_API_TOKEN: ${HUGGINGFACEHUB_API_TOKEN}
     volumes:
-      - .:/app
+      - ./backend:/app
     depends_on:
       postgres:
         condition: service_healthy
@@ -119,7 +119,7 @@ services:
       DB_PORT: 5432
       REDIS_URL: redis://redis:6379/0
     volumes:
-      - .:/app
+      - ./backend:/app
     depends_on:
       postgres:
         condition: service_healthy
