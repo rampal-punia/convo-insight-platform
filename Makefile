@@ -26,66 +26,66 @@ logs: ## Follow logs from all services
 logs-web: ## Follow web service logs only
 	docker compose logs -f web
 
-# --- Django Commands (local) ---
+# --- Django Commands (local, run from backend/) ---
 migrate: ## Run database migrations
-	python manage.py migrate
+	cd backend && python manage.py migrate
 
 makemigrations: ## Create new migrations
-	python manage.py makemigrations
+	cd backend && python manage.py makemigrations
 
 seed: ## Load seed data into database
-	python manage.py loaddata seed_data.json
+	cd backend && python manage.py loaddata seed_data.json
 
 shell: ## Open Django shell
-	python manage.py shell
+	cd backend && python manage.py shell
 
 superuser: ## Create a superuser
-	python manage.py createsuperuser
+	cd backend && python manage.py createsuperuser
 
 runserver: ## Run Django development server
-	python manage.py runserver
+	cd backend && python manage.py runserver
 
 # --- Database ---
 db-shell: ## Open PostgreSQL shell
 	docker compose exec postgres psql -U postgres -d convoinsight
 
-# --- Code Quality ---
+# --- Code Quality (run from backend/ where pyproject.toml lives) ---
 lint: ## Run linter (ruff)
-	ruff check . --fix
+	cd backend && ruff check . --fix
 
 format: ## Format code (ruff format)
-	ruff format .
+	cd backend && ruff format .
 
 check: ## Run all checks (lint + format check)
-	ruff check .
-	ruff format --check .
+	cd backend && ruff check .
+	cd backend && ruff format --check .
 
-# --- Testing ---
+# --- Testing (run from backend/ where conftest.py + pyproject.toml live) ---
 test: ## Run all tests
-	pytest --tb=short -q
+	cd backend && pytest --tb=short -q
 
 test-cov: ## Run tests with coverage report
-	pytest --cov=apps --cov-report=term-missing --cov-report=html
+	cd backend && pytest --cov=apps --cov-report=term-missing --cov-report=html
 
 test-verbose: ## Run tests with verbose output
-	pytest -v
+	cd backend && pytest -v
 
 # --- Setup ---
 setup: ## First-time setup (install deps + create env)
 	cp -n .env.example .env || true
-	pip install -r requirements.txt
-	python manage.py migrate
+	cd backend && pip install -r requirements.txt
+	cd backend && python manage.py migrate
 	@echo "Setup complete! Edit .env with your API keys, then run 'make runserver'"
 
 install: ## Install Python dependencies
-	pip install -r requirements.txt
+	cd backend && pip install -r requirements.txt
 
-# --- Celery ---
+# --- Celery (local, run from backend/) ---
 celery-worker: ## Start Celery worker (local)
-	celery -A config.celery worker --loglevel=info
+	cd backend && celery -A config.celery worker --loglevel=info
 
 celery-beat: ## Start Celery beat scheduler (local)
-	celery -A config.celery beat --loglevel=info
+	cd backend && celery -A config.celery beat --loglevel=info
 
 # --- Help ---
 help: ## Show this help message
