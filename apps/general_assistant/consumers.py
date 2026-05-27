@@ -1,14 +1,16 @@
 import json
+import logging
 import base64
 from channels.generic.websocket import AsyncWebsocketConsumer
 from langchain_core.messages import HumanMessage, AIMessage
 from channels.db import database_sync_to_async
 from django.core.files.base import ContentFile
 
-from .models import GeneralConversation, GeneralMessage, AudioMessage
+from .models import GeneralConversation, GeneralMessage, AudioMessage, ImageMessage
 from convochat.utils import configure_llm
-from .models import AudioMessage, ImageMessage
 from .services import VoiceModalHandler, ImageModalHandler
+
+logger = logging.getLogger('general_assistant')
 
 
 class GeneralChatConsumer(AsyncWebsocketConsumer):
@@ -59,7 +61,7 @@ class GeneralChatConsumer(AsyncWebsocketConsumer):
     ):
         try:
             history = await self.get_conversation_history()
-            print("history: ", history)
+            logger.debug("history: %s", history)
             history_str = '\n'.join(
                 [f"{'Human' if isinstance(msg, HumanMessage) else 'AI'}:{msg.content}" for msg in history]
             )
@@ -67,7 +69,7 @@ class GeneralChatConsumer(AsyncWebsocketConsumer):
                 'history': history_str,
                 'input': input_data
             }
-            print("input_with_history: ", input_with_history)
+            logger.debug("input_with_history: %s", input_with_history)
 
             # Generate AI response
             llm_response_chunks = []
@@ -92,7 +94,7 @@ class GeneralChatConsumer(AsyncWebsocketConsumer):
                         'title': new_title
                     }))
                 except Exception as ex:
-                    print(f"Unable to generate title: {ex}")
+                    logger.warning("Unable to generate title: %s", ex)
 
             if not ai_response:
                 ai_response = "I apologize, but I couldn't generate a response. Please try asking your question again."
@@ -105,7 +107,7 @@ class GeneralChatConsumer(AsyncWebsocketConsumer):
             )
             return ai_response
         except Exception as ex:
-            print(f"Unable to process response: {ex}")
+            logger.error("Unable to process response: %s", exc_info=True)
 
     async def handle_audio_message(self, audio_data):
         voice_handler = VoiceModalHandler()
@@ -170,7 +172,7 @@ class GeneralChatConsumer(AsyncWebsocketConsumer):
 
         # Generate detailed AI response
         ai_response = await self.generate_ai_response(image_description, user_message)
-        print("AI Response:", ai_response)
+        logger.debug("AI Response: %s", ai_response)
 
         # Save AI's text message
         ai_message = await self.save_message('IM', is_from_user=False, in_reply_to=user_message)
@@ -229,7 +231,7 @@ class GeneralChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def save_audio_message(self, message, audio_content, transcript=''):
-        print('transcript: ', transcript)
+        logger.debug("transcript: %s", transcript)
         audio_file = ContentFile(audio_content, name=f"audio_{message.id}.wav")
         return AudioMessage.objects.create(
             message=message,
