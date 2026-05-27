@@ -6,6 +6,7 @@ exposed as ``/api/v1/<basename>/<url_path>/``.
 
 Visit ``/api/v1/`` in a browser to see the full route map.
 """
+
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
@@ -51,17 +52,27 @@ router.register(r"ai-texts", AITextViewSet, basename="ai-text")
 router.register(r"intents", IntentViewSet, basename="intent")
 router.register(r"topics", TopicViewSet, basename="topic")
 router.register(r"sentiments", SentimentViewSet, basename="sentiment")
-router.register(r"sentiment-categories", SentimentCategoryViewSet, basename="sentiment-category")
-router.register(r"granular-emotions", GranularEmotionViewSet, basename="granular-emotion")
+router.register(
+    r"sentiment-categories", SentimentCategoryViewSet, basename="sentiment-category"
+)
+router.register(
+    r"granular-emotions", GranularEmotionViewSet, basename="granular-emotion"
+)
 
 # Analysis / insights
-router.register(r"agent-performance", LLMAgentPerformanceViewSet, basename="agent-performance")
+router.register(
+    r"agent-performance", LLMAgentPerformanceViewSet, basename="agent-performance"
+)
 router.register(
     r"conversation-metrics", ConversationMetricsViewSet, basename="conversation-metrics"
 )
 router.register(r"recommendations", RecommendationViewSet, basename="recommendation")
-router.register(r"topic-distributions", TopicDistributionViewSet, basename="topic-distribution")
-router.register(r"intent-predictions", IntentPredictionViewSet, basename="intent-prediction")
+router.register(
+    r"topic-distributions", TopicDistributionViewSet, basename="topic-distribution"
+)
+router.register(
+    r"intent-predictions", IntentPredictionViewSet, basename="intent-prediction"
+)
 
 # Accounts
 router.register(r"users", UserViewSet, basename="user")
@@ -73,5 +84,6 @@ router.register(r"nlp", NLPAnalysisViewSet, basename="nlp")
 app_name = "v1"
 
 urlpatterns = [
+    path("auth/", include("api.v1.urls_auth", namespace="auth")),
     path("", include(router.urls)),
 ]
