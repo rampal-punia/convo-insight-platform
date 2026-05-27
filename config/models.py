@@ -1,7 +1,11 @@
 # config/models.py
 
+import logging
+
 from django.db import models
 from django.utils.translation import gettext_lazy as _
+
+logger = logging.getLogger('config')
 
 
 class CreationModificationDateBase(models.Model):
@@ -24,12 +28,12 @@ class CreationModificationDateBase(models.Model):
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
-        print("save() from CreationModificationDateBase called")
+        logger.info("save() from CreationModificationDateBase called")
     save.alters_data = True
 
     def delete(self, *args, **kwargs):
         super().delete(*args, **kwargs)
-        print("delete() from CreationModificationDateBase called")
+        logger.info("delete() from CreationModificationDateBase called")
 
     def test(self):
-        print("test() from CreationModificationDateBase called")
+        logger.info("test() from CreationModificationDateBase called")
