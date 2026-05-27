@@ -28,7 +28,7 @@ from .text_classification_rag_processor import RAGProcessorTextClassification
 from .intent_recognitionwith_tr_bert import IntentModelTester
 from .sentiment_model_analysis import SentimentModelManager
 
-logger = logging.getLogger('orders')
+logger = logging.getLogger('playground')
 # Force CPU if CUDA is unavailable
 # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -282,39 +282,6 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
             logger.error(traceback.format_exc())
             raise
 
-    async def receive(self, text_data):
-        """Handle incoming WebSocket messages with proper error handling"""
-        try:
-            data = json.loads(text_data)
-            task = data.get('task')
-            text = data.get('text')
-            method = data.get('method', 'few_shot_learning')
-
-            if not text:
-                await self.send(json.dumps({
-                    'error': 'No text provided'
-                }))
-                return
-
-            # Process the request based on method
-            result = await self.process_request(task, text, method)
-
-            # Send the result back
-            await self.send(json.dumps({
-                'result': result
-            }))
-
-        except json.JSONDecodeError:
-            await self.send(json.dumps({
-                'error': 'Invalid JSON format'
-            }))
-        except Exception as e:
-            logger.error(f"Error processing request: {e}")
-            logger.error(traceback.format_exc())
-            await self.send(json.dumps({
-                'error': f'An error occurred: {str(e)}'
-            }))
-
     @database_sync_to_async
     def get_sentiment_categories(self):
         return list(SentimentCategory.objects.all().values_list('name', flat=True))
@@ -475,70 +442,70 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
 
     async def receive(self, text_data):
         """Handle incoming WebSocket messages"""
-        # try:
-        data = json.loads(text_data)
-        task = data.get('task')
-        text = data.get('text')
-        # default to few_shot_learning
-        method = data.get('method', 'few_shot_learning')
+        try:
+            data = json.loads(text_data)
+            task = data.get('task')
+            text = data.get('text')
+            # default to few_shot_learning
+            method = data.get('method', 'few_shot_learning')
 
-        if not text:
+            if not text:
+                await self.send(json.dumps({
+                    'error': 'No text provided'
+                }))
+                return
+
+            if method == 'finetuned':
+                # Process based on selected task
+                if task == 'sentiment':
+                    result = await self.analyze_finetuned_sentiment(text)
+                elif task == 'intent':
+                    result = await self.analyze_finetuned_intent(text)
+                elif task == 'topic':
+                    result = await self.analyze_finetuned_topic(text)
+                elif task == 'ner':  # Add NER task
+                    result = await self.analyze_finetuned_ner(text)
+                else:
+                    await self.send(json.dumps({
+                        'error': 'Invalid task specified'
+                    }))
+                    return
+
+            elif method == 'few_shot_learning':
+                # Process based on selected task
+                if task == 'sentiment':
+                    result = await self.analyze_sentiment(text)
+                elif task == 'intent':
+                    result = await self.analyze_intent(text)
+                elif task == 'topic':
+                    result = await self.analyze_topic(text)
+                else:
+                    await self.send(json.dumps({
+                        'error': 'Invalid task specified'
+                    }))
+                    return
+
+            elif method == 'rag':
+                # Map task to rag task types
+                task_map = {
+                    'sentiment': 'SE',
+                    'intent': 'IN',
+                    'topic': 'TO'
+                }
+                rag_task = task_map[task]
+
+                # Process using RAG
+                result = await self.rag_processor.process(text, rag_task)
+
             await self.send(json.dumps({
-                'error': 'No text provided'
+                'result': result
             }))
-            return
 
-        if method == 'finetuned':
-            # Process based on selected task
-            if task == 'sentiment':
-                result = await self.analyze_finetuned_sentiment(text)
-            elif task == 'intent':
-                result = await self.analyze_finetuned_intent(text)
-            elif task == 'topic':
-                result = await self.analyze_finetuned_topic(text)
-            elif task == 'ner':  # Add NER task
-                result = await self.analyze_finetuned_ner(text)
-            else:
-                await self.send(json.dumps({
-                    'error': 'Invalid task specified'
-                }))
-                return
-
-        elif method == 'few_shot_learning':
-            # Process based on selected task
-            if task == 'sentiment':
-                result = await self.analyze_sentiment(text)
-            elif task == 'intent':
-                result = await self.analyze_intent(text)
-            elif task == 'topic':
-                result = await self.analyze_topic(text)
-            else:
-                await self.send(json.dumps({
-                    'error': 'Invalid task specified'
-                }))
-                return
-
-        elif method == 'rag':
-            # Map task to rag task types
-            task_map = {
-                'sentiment': 'SE',
-                'intent': 'IN',
-                'topic': 'TO'
-            }
-            rag_task = task_map[task]
-
-            # Process using RAG
-            result = await self.rag_processor.process(text, rag_task)
-
-        await self.send(json.dumps({
-            'result': result
-        }))
-
-        # except Exception as e:
-        #     print(str(e))
-        #     await self.send(json.dumps({
-        #         'error': f'An error occurred: {str(e)}'
-        #     }))
+        except Exception as e:
+            logger.error(f"Error processing request: {e}")
+            await self.send(json.dumps({
+                'error': f'An error occurred: {str(e)}'
+            }))
 
     async def analyze_finetuned_sentiment(self, text):
         """Analyze sentiment with proper error handling and state management"""
@@ -574,10 +541,6 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
             logger.error(f"Error in sentiment analysis: {e}")
             logger.error(traceback.format_exc())
             raise
-
-    async def disconnect(self, close_code):
-        """Handle WebSocket disconnection"""
-        logger.info(f"WebSocket disconnected with code: {close_code}")
 
     async def analyze_finetuned_intent(self, text):
         """Analyze intent with proper error handling and state management"""
@@ -709,8 +672,7 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
     async def analyze_intent(self, text: str) -> Dict:
         """Analyze intent using ChatGPT with few-shot learning"""
         prompt = self.intent_prompt.format(input=text)
-        print("*"*40)
-        print("final intent prompt is: ", prompt)
+        logger.debug("Final intent prompt: %s", prompt)
         response = await self.llm.ainvoke(prompt)
 
         # Extract intent from response
@@ -732,8 +694,7 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
     async def analyze_topic(self, text: str) -> Dict:
         """Analyze topic using ChatGPT with few-shot learning"""
         prompt = self.topic_prompt.format(input=text)
-        print("*"*40)
-        print("final topic prompt is: ", prompt)
+        logger.debug("Final topic prompt: %s", prompt)
         response = await self.llm.ainvoke(prompt)
 
         content = response.content.strip()
