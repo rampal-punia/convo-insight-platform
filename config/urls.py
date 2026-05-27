@@ -5,6 +5,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.urls import path, include
 from apps.accounts import views
+from apps.dashboard.health import health_check, readiness_check
 
 urlpatterns = [
     path('accounts/login/', views.CustomLoginView.as_view(), name='account_login'),
@@ -16,6 +17,8 @@ urlpatterns = [
     path('logout/', views.CustomLogoutView.as_view(), name='account_logout'),
     path('accounts/', include('allauth.urls')),
     path('admin/', admin.site.urls),
+    path('health/', health_check),
+    path('ready/', readiness_check),
     path('', include('dashboard.urls'), name='dashboard'),
     path('api/', include('api.urls')),
     path('convochat/', include('convochat.urls'), name='convochat'),
