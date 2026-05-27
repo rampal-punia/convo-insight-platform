@@ -55,9 +55,9 @@ ConvoInsight leverages cutting-edge NLP techniques and Large Language Models to 
 - **Task Queue**: Celery with Redis as message broker
 - **LLM Integration And LLM-Agent Creation**: LangChain and LangGraph
 - **Web Servers**: ASGI (Daphne) for WebSocket, WSGI (Gunicorn) for HTTP
-- **Frontend**: Django templates with JavaScript and jQuery (future plans for React.js)
+- **Frontend**: Next.js (App Router, JSX)
 - **Containerization**: Docker (for deployment)
-- **Machine Learning**: 
+- **Machine Learning**:
   - Custom fine-tuned LLM models
   - SageMaker for ML workflow automation
   - Hugging Face models for various NLP tasks
@@ -68,25 +68,29 @@ ConvoInsight leverages cutting-edge NLP techniques and Large Language Models to 
 
 ```
 convo-insight-platform/
-├── config/                # Main Django project directory
-├── apps/                  # Django apps
-│   ├── accounts/          # User account management
-│   ├── analysis/          # Analysis and metrics calculation
-│   ├── api/               # API endpoints
-│   ├── convochat/         # Core conversation handling
-│   ├── dashboard/         # User dashboard and visualization
-│   ├── general_assistant/ # General AI assistant functionality
-│   ├── llms/              # LLM development, integration and management
-│   ├── orders/            # Order management
-│   └── products/          # Product management
-├── data_processing/       # Scripts for data ingestion and preprocessing
-├── static/                # Static files (CSS, JS, images)
-├── templates/             # HTML templates
-├── tests/                 # Test cases
-├── manage.py
-├── requirements.txt
-├── Dockerfile
+├── backend/               # Django backend
+│   ├── config/            # Main Django project directory
+│   ├── apps/              # Django apps
+│   │   ├── accounts/      # User account management
+│   │   ├── analysis/      # Analysis and metrics calculation
+│   │   ├── api/           # API endpoints
+│   │   ├── convochat/     # Core conversation handling
+│   │   ├── dashboard/     # User dashboard and visualization
+│   │   ├── general_assistant/ # General AI assistant functionality
+│   │   ├── llms/          # LLM development, integration and management
+│   │   ├── orders/        # Order management
+│   │   └── products/      # Product management
+│   ├── data_processing/   # Scripts for data ingestion and preprocessing
+│   ├── static/            # Static files (CSS, JS, images)
+│   ├── scripts/           # Utility scripts (DB init, etc.)
+│   ├── manage.py
+│   ├── requirements.txt
+│   ├── conftest.py
+│   └── pyproject.toml
+├── frontend/              # Next.js frontend
 ├── docker-compose.yml
+├── Dockerfile
+├── Makefile
 ├── CONTRIBUTING.md
 └── README.md
 ```
@@ -116,23 +120,23 @@ convo-insight-platform/
 
 3. Install dependencies:
    ```
-   pip install -r requirements.txt
+   cd backend && pip install -r requirements.txt
    ```
 
 4. Set up PostgreSQL and create a database for the project.
 
 5. Install the pgvector extension in your PostgreSQL database.
 
-6. Set up environment variables (create a `.env` file in the project root).
+6. Set up environment variables (copy `.env.example` to `.env` at the repo root and fill in your values).
 
 7. Run migrations:
    ```
-   python manage.py migrate
+   cd backend && python manage.py migrate
    ```
 
 8. Start the development server:
    ```
-   python manage.py runserver
+   cd backend && python manage.py runserver
    ```
 
 ## Usage
@@ -147,23 +151,24 @@ convo-insight-platform/
 
 5. To create dummy data for testing:
    ```
+   cd backend
    python manage.py create_random_users 50
    python manage.py generate_dummy_data
    ```
 
 6. To fine-tune the LLM model:
    ```
-   python manage.py fine_tune_llm
+   cd backend && python manage.py fine_tune_llm
    ```
 
 7. To train and deploy a model using SageMaker:
    ```
-   python manage.py train_deploy_model [model_type] [script_path] [train_data_path] [output_path] [endpoint_name]
+   cd backend && python manage.py train_deploy_model [model_type] [script_path] [train_data_path] [output_path] [endpoint_name]
    ```
 
 8. To monitor model performance:
    ```
-   python manage.py monitor_model [endpoint_name]
+   cd backend && python manage.py monitor_model [endpoint_name]
    ```
 
 ## Current State and TODO
