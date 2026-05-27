@@ -1,10 +1,13 @@
 import aiohttp
 import json
+import logging
 from django.conf import settings
 from langchain_core.messages import HumanMessage, AIMessage
 from channels.db import database_sync_to_async
 from convochat.models import Conversation, Message, AIText
 from apps.convochat.utils import configure_llm
+
+logger = logging.getLogger('convochat')
 
 
 # Summary generation API
@@ -125,7 +128,7 @@ class TextChatHandler:
                         'title': new_title
                     }))
                 except Exception as ex:
-                    print(f"Unable to generate title: {ex}")
+                    logger.warning("Unable to generate title: %s", ex)
             if not ai_response:
                 ai_response = "I apologize, but I couldn't generate a response. Please try asking your question again."
 
@@ -140,4 +143,4 @@ class TextChatHandler:
                 ai_response
             )
         except Exception as ex:
-            print(f"Unable to process response: {ex}")
+            logger.error("Unable to process response: %s", exc_info=True)
