@@ -33,16 +33,16 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: backend/requirements.txt
 
       - name: Install dependencies
-        run: |
-          pip install ruff
+        run: pip install ruff
 
       - name: Run Ruff Linter
-        run: ruff check .
+        run: cd backend && ruff check .
 
       - name: Check Formatting
-        run: ruff format --check .
+        run: cd backend && ruff format --check .
 
   # ---- Test ----
   test:
@@ -83,27 +83,28 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: backend/requirements.txt
 
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
+          pip install -r backend/requirements.txt
           pip install pytest pytest-django pytest-asyncio coverage
 
       - name: Run migrations
-        run: python manage.py migrate --noinput
+        run: cd backend && python manage.py migrate --noinput
 
       - name: Run tests with coverage
         run: |
-          coverage run -m pytest
-          coverage report --fail-under=0
-          coverage xml
+          cd backend && coverage run -m pytest
+          cd backend && coverage report --fail-under=0
+          cd backend && coverage xml
 
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
-          path: coverage.xml
+          path: backend/coverage.xml
 
   # ---- Build Docker Image ----
   build:
@@ -136,11 +137,10 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
 
       - name: Install bandit
         run: pip install bandit[toml]
 
       - name: Run Bandit security scan
-        run: bandit -r apps/ config/ -c pyproject.toml
+        run: cd backend && bandit -r apps/ config/ -c pyproject.toml
         continue-on-error: true
