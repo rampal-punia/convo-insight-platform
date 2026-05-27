@@ -187,3 +187,20 @@ xxhash==3.7.0
 yarl==1.24.2
 zope.interface==8.5
 zstandard==0.25.0
+
+# --- Added during Step 2/3 revival (May 2026) ---
+pgvector==0.4.2
+markdown==3.10.2
+bleach==6.3.0
+webencodings==0.5.1
+djangorestframework-simplejwt==5.5.1
+PyJWT==2.13.0
+# Test stack (lightweight; full install only needed in CI/dev)
+pytest==9.0.3
+pytest-django==4.12.0
+pytest-asyncio==1.4.0
+factory-boy==3.3.3
+Faker==40.19.1
+coverage==7.14.1
+iniconfig==2.3.0
+pluggy==1.6.0
