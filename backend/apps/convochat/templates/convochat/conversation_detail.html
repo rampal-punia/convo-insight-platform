@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+
+  <!-- [ Main Content ] start -->
+  <div class="row">
+    <div class="col-sm-12">
+      <div class="card">
+        <div class="card-header">
+          <h3>{{ conversation.title }}</h3>
+          <p>Status: {{ conversation.get_status_display }}</p>
+        </div>
+        <div class="card-block">
+          {% for question in questions %}
+            <div class="question {% if question.is_from_user %} user-question {% else %} llm-question {% endif %}" >
+              <p>{{ question.content }}</p>
+              <p><small>{{ question.created }}</small></p>
+            </div>
+          {% endfor %}
+        </div>
+        <div class="card-footer">
+          <a class="label theme-bg text-white f-12" href="{% url 'convochat:new_chat_url' %}">New convochat</a>
+          <a class="label theme-bg2 text-white f-12" href="{% url 'convochat:conversation_list_url' %}">My Conversations</a>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- [ Main Content ] end -->
+
+{% endblock content %}
