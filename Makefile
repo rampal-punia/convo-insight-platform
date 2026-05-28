@@ -74,8 +74,16 @@ test-verbose: ## Run tests with verbose output
 setup: ## First-time setup (install deps + create env)
 	cp -n .env.example .env || true
 	cd backend && pip install -r requirements.txt
+	$(MAKE) download-nlp-data
 	cd backend && python manage.py migrate
 	@echo "Setup complete! Edit .env with your API keys, then run 'make runserver'"
+
+download-nlp-data: ## Download NLP models (spacy, nltk)
+	@echo "Downloading spacy en_core_web_sm model..."
+	cd backend && python -m spacy download en_core_web_sm
+	@echo "Downloading NLTK data..."
+	cd backend && python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab'); nltk.download('stopwords'); nltk.download('wordnet')"
+	@echo "NLP models downloaded successfully!"
 
 install: ## Install Python dependencies
 	cd backend && pip install -r requirements.txt
