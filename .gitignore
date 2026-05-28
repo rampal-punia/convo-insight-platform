@@ -68,6 +68,8 @@ coverage.xml
 *.safetensors
 *.joblib
 *.dill
+*_bertopic_model*
+*_transformer_model*
 
 # Project Specific
 local_folder/
