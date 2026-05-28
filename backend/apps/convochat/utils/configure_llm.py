@@ -309,42 +309,36 @@ def get_chat_llm(model_name='gpt-4o-mini', model_provider='openai'):
     )
 
 
+_title_client = InferenceClient(
+    model='czearing/article-title-generator',
+    token=settings.HUGGINGFACEHUB_API_TOKEN,
+)
+
+_summary_client = InferenceClient(
+    model='facebook/bart-large-cnn',
+    token=settings.HUGGINGFACEHUB_API_TOKEN,
+)
+
+
 async def generate_title(conversation_content):
-    API_URL_TITLE = "https://router.huggingface.co/hf-inference/models/czearing/article-title-generator"
-    headers = {"Authorization": f"Bearer {settings.HUGGINGFACEHUB_API_TOKEN}"}
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-                API_URL_TITLE,
-                headers=headers,
-                json={
-                    "inputs": conversation_content,
-                    "parameters": {"max_length": 50, "min_length": 10}
-                }) as response:
-            result = await response.json()
-            if isinstance(result, list) and len(result) > 0:
-                return result[0]['generated_text']
-            else:
-                return "Untitled Conversation"
+    try:
+        result = await asyncio.to_thread(
+            _title_client.text_generation,
+            conversation_content,
+            max_new_tokens=50,
+        )
+        return result.strip() if result else 'Untitled Conversation'
+    except Exception:
+        return 'Untitled Conversation'
 
 
 async def generate_summary(conversation_content):
-    API_URL_SUMMARY = "https://router.huggingface.co/hf-inference/models/facebook/bart-large-cnn"
-    headers = {"Authorization": f"Bearer {settings.HUGGINGFACEHUB_API_TOKEN}"}
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-                API_URL_SUMMARY,
-                headers=headers,
-                json={
-                    "inputs": conversation_content,
-                    "parameters": {"max_length": 50, "min_length": 10}
-                }) as response:
-            result = await response.json()
-            if isinstance(result, list) and len(result) > 0:
-                return result[0]['generated_summary']
-            else:
-                return "Untitled Conversation"
-
-
-# List available models
-# all_models = LLMConfig.list_available_models()
-# openai_models = LLMConfig.list_available_models(provider="openai")
+    try:
+        result = await asyncio.to_thread(
+            _summary_client.text_generation,
+            conversation_content,
+            max_new_tokens=50,
+        )
+        return result.strip() if result else 'Untitled Conversation'
+    except Exception:
+        return 'Untitled Conversation'
