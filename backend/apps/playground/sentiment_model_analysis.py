@@ -1,3 +1,4 @@
+import logging
 import torch
 import json
 from typing import Dict, List, Union
@@ -18,6 +19,8 @@ from nltk.stem import WordNetLemmatizer
 from sklearn.metrics import classification_report
 from sklearn.preprocessing import LabelEncoder
 import spacy
+
+logger = logging.getLogger(__name__)
 nlp = spacy.load('en_core_web_sm')
 
 try:
@@ -185,11 +188,11 @@ def train_model(model, train_loader, val_loader, device, epochs=5):
             'classification_report': classification_report(true_labels, predictions)
         }
 
-        print(f'Epoch {epoch + 1}:')
-        print(f'Average training loss: {total_loss / len(train_loader)}')
-        print(f'Validation loss: {val_loss / len(val_loader)}')
-        print('\nClassification Report:')
-        print(classification_report(true_labels, predictions))
+        logger.info(f'Epoch {epoch + 1}:')
+        logger.info(f'Average training loss: {total_loss / len(train_loader)}')
+        logger.info(f'Validation loss: {val_loss / len(val_loader)}')
+        logger.info('\nClassification Report:')
+        logger.info(classification_report(true_labels, predictions))
 
     # Restore best model state
     if best_model_state is not None:
@@ -225,7 +228,7 @@ def save_trained_model(model, tokenizer, label_encoder, training_info, save_dir=
     with open(save_dir / "config.json", "w") as f:
         json.dump(config, f, indent=4)
 
-    print(f"Model and components saved to {save_dir}")
+    logger.info(f"Model and components saved to {save_dir}")
 
 
 def main():
@@ -272,7 +275,7 @@ def main():
         training_info=training_info
     )
 
-    print("Training completed and model saved successfully!")
+    logger.info("Training completed and model saved successfully!")
     return trained_model, preprocessor.tokenizer, label_encoder, training_info
 
 
@@ -316,7 +319,7 @@ class SentimentModelManager:
         with open(self.model_dir / "config.json", "w") as f:
             json.dump(config, f)
 
-        print(f"Model and components saved to {self.model_dir}")
+        logger.info(f"Model and components saved to {self.model_dir}")
 
     def load_model(self) -> None:
         """Load all model components."""
@@ -344,7 +347,7 @@ class SentimentModelManager:
         )
         self.model.eval()
 
-        print("Model and components loaded successfully")
+        logger.info("Model and components loaded successfully")
 
     def predict(self,
                 texts: Union[str, List[str]],
@@ -448,10 +451,10 @@ if __name__ == "__main__":
 
     # Format and display results
     df_results = format_predictions(results)
-    print("\nPrediction Results:")
-    print(df_results)
+    logger.info("\nPrediction Results:")
+    logger.info(df_results)
 
     # Example of running prediction on a single text
     single_result = manager.predict("I'm really excited about this!")
-    print("\nSingle Text Prediction:")
-    print(format_predictions(single_result))
+    logger.info("\nSingle Text Prediction:")
+    logger.info(format_predictions(single_result))
