@@ -152,4 +152,4 @@ if __name__ == '__main__':
 
     text = "Life is awesome and programming in python is great."
     speech = asyncio.run(vh.text_to_speech(text))
-    print(speech)
+    logger.info(speech)
