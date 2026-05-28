@@ -12,16 +12,6 @@ from typing import Literal, Optional, Union
 
 
 class LLMConfig:
-    HUGGINGFACE_MODELS = {
-        "Mistral-7B": "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3",
-        "Mistral-Code-7B": "https://api-inference.huggingface.co/models/mistralai/Mamba-Codestral-7B-v0.1",
-        "Mistral-Nvidia-7B": "https://api-inference.huggingface.co/models/nvidia/Mistral-NeMo-Minitron-8B-Base",
-        "Mixtral-8x7B-I": "https://api-inference.huggingface.co/models/mistralai/Mixtral-8x7B-Instruct-v0.1",
-        "Mixtral-8x7B": "https://api-inference.huggingface.co/models/mistralai/Mixtral-8x7B-v0.1",
-        "Mixtral-8x22B": "https://api-inference.huggingface.co/models/mistralai/Mixtral-8x22B-Instruct-v0.1",
-        "Mistral-Nemo": "https://api-inference.huggingface.co/models/mistralai/Mistral-Nemo-Instruct-2407",
-    }
-
     HUGGINGFACE_MODELS_REPO = {
         "Mistral-7B": "mistralai/Mistral-7B-Instruct-v0.3",
         "Mistral-Code-7B": "mistralai/Mamba-Codestral-7B-v0.1",
@@ -319,7 +309,7 @@ def get_chat_llm(model_name='gpt-4o-mini', model_provider='openai'):
 
 
 async def generate_title(conversation_content):
-    API_URL_TITLE = "https://api-inference.huggingface.co/models/czearing/article-title-generator"
+    API_URL_TITLE = "https://router.huggingface.co/v1/models/czearing/article-title-generator"
     headers = {"Authorization": f"Bearer {settings.HUGGINGFACEHUB_API_TOKEN}"}
     async with aiohttp.ClientSession() as session:
         async with session.post(
@@ -337,7 +327,7 @@ async def generate_title(conversation_content):
 
 
 async def generate_summary(conversation_content):
-    API_URL_SUMMARY = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
+    API_URL_SUMMARY = "https://router.huggingface.co/v1/models/facebook/bart-large-cnn"
     headers = {"Authorization": f"Bearer {settings.HUGGINGFACEHUB_API_TOKEN}"}
     async with aiohttp.ClientSession() as session:
         async with session.post(
