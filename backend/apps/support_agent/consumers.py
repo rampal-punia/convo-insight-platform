@@ -51,9 +51,6 @@ class SupportAgentConsumer(AsyncWebsocketConsumer):
                 return
             await self.accept()
 
-            # "user_id": self.user_id,
-            # "conversation_id": self.conversation_id,
-            # "db_ops": DatabaseOperations(self.user)
             self.tools = get_all_tools()
             self.username_cap = self.user.username.capitalize()
 
@@ -118,7 +115,6 @@ class SupportAgentConsumer(AsyncWebsocketConsumer):
 
             # Get existing state or create new
             try:
-                # current_state = graph.get_state(self.config)
                 current_state = graph.get_state(
                     config).values["messages"][-1]
                 logger.info(f"Current state is {current_state}")
