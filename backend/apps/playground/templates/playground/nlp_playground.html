@@ -1,0 +1,365 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}NLP Analysis Playground{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <h1 class="text-center mb-4">NLP Analysis Playground</h1>
+
+    <!-- Error Alert -->
+    <div id="error-alert" class="alert alert-danger alert-dismissible fade show d-none" role="alert">
+        <strong>Error!</strong>
+        <span id="error-message"></span>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <form id="analysis-form">
+                <!-- Method Selection -->
+                <div class="mb-3">
+                    <label for="method-select" class="form-label fw-bold">Select method</label>
+                    <select id="method-select" class="form-select">
+                        <option value="finetuned">Fine Tuned LLMs</option>
+                        <option value="few_shot_learning">Few Shot Learning With ChatGpt</option>
+                        <option value="rag">Retrieval Augmented Generation</option>
+                    </select>
+                </div>
+
+                <!-- Task Selection -->
+                <div class="mb-3">
+                    <label for="task-select" class="form-label fw-bold">Select Task</label>
+                    <select id="task-select" class="form-select">
+                        <option value="sentiment">Sentiment Analysis</option>
+                        <option value="intent">Intent Recognition</option>
+                        <option value="topic">Topic Classification</option>
+                    </select>
+                </div>
+
+                <!-- Text Input -->
+                <div class="mb-3">
+                    <label for="input-text" class="form-label fw-bold">Enter Text</label>
+                    <textarea 
+                        id="input-text" 
+                        class="form-control" 
+                        rows="4" 
+                        placeholder="Enter text to analyze..."></textarea>
+                </div>
+
+                <!-- Submit Button -->
+                <div class="d-grid">
+                    <button 
+                        type="submit" 
+                        id="submit-btn" 
+                        class="btn btn-primary">
+                        Analyze
+                    </button>
+                </div>
+            </form>
+
+            <!-- Results Section -->
+            <div id="results-section" class="mt-4 d-none">
+                <h2 class="h4 mb-3">Analysis Results</h2>
+                
+                <!-- Sentiment Analysis Results -->
+                <div id="sentiment-results" class="d-none">
+                    <div class="bg-light p-3 rounded">
+                        <div class="mb-2">
+                            <span class="fw-bold">Sentiment:</span>
+                            <span id="sentiment-label" class="ms-2 badge"></span>
+                        </div>
+                        <div class="mb-2">
+                            <span class="fw-bold">Confidence:</span>
+                            <div class="progress mt-1">
+                                <div id="sentiment-score" class="progress-bar" role="progressbar"></div>
+                            </div>
+                        </div>
+                        <div id="sentiment-emotion-container" class="mb-2 d-none">
+                            <span class="fw-bold">Emotion:</span>
+                            <span id="sentiment-emotion" class="ms-2 badge bg-info"></span>
+                        </div>
+                        <div id="sentiment-explanation-container" class="d-none">
+                            <span class="fw-bold">Explanation:</span>
+                            <p id="sentiment-explanation" class="mt-2 mb-0 text-muted"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Intent Recognition Results -->
+                <div id="intent-results" class="d-none">
+                    <div class="bg-light p-3 rounded">
+                        <div class="mb-2">
+                            <span class="fw-bold">Intent:</span>
+                            <span id="intent-label" class="ms-2 badge bg-primary"></span>
+                        </div>
+                        <div class="mb-2">
+                            <span class="fw-bold">Confidence:</span>
+                            <div class="progress mt-1">
+                                <div id="intent-score" class="progress-bar" role="progressbar"></div>
+                            </div>
+                        </div>
+                        <div id="intent-explanation-container" class="d-none">
+                            <span class="fw-bold">Explanation:</span>
+                            <p id="intent-explanation" class="mt-2 mb-0 text-muted"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Topic Classification Results -->
+                <div id="topic-results" class="d-none">
+                    <div class="bg-light p-3 rounded">
+                        <div class="mb-2">
+                            <span class="fw-bold">Topic:</span>
+                            <span id="topic-label" class="ms-2 badge bg-success"></span>
+                        </div>
+                        <div class="mb-2">
+                            <span class="fw-bold">Confidence:</span>
+                            <div class="progress mt-1">
+                                <div id="topic-score" class="progress-bar" role="progressbar"></div>
+                            </div>
+                        </div>
+                        <div id="topic-category-container" class="mb-2 d-none">
+                            <span class="fw-bold">Category:</span>
+                            <span id="topic-category" class="ms-2 badge bg-secondary"></span>
+                        </div>
+                        <div id="topic-words-container" class="mb-2 d-none">
+                            <span class="fw-bold">Related Words:</span>
+                            <div id="topic-words" class="mt-2"></div>
+                        </div>
+                        <div id="topic-explanation-container" class="d-none">
+                            <span class="fw-bold">Explanation:</span>
+                            <p id="topic-explanation" class="mt-2 mb-0 text-muted"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Loading Spinner -->
+            <div id="loading-spinner" class="text-center mt-4 d-none">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="text-muted mt-2">Analyzing...</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block on_page_js %}
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        let socket = null;
+        const form = document.getElementById('analysis-form');
+        const taskSelect = document.getElementById('task-select');
+        const methodSelect = document.getElementById('method-select');
+        const inputText = document.getElementById('input-text');
+        const submitBtn = document.getElementById('submit-btn');
+        const loadingSpinner = document.getElementById('loading-spinner');
+        const errorAlert = document.getElementById('error-alert');
+        const errorMessage = document.getElementById('error-message');
+        const resultsSection = document.getElementById('results-section');
+
+        // Connect WebSocket
+        function connectWebSocket() {
+            const wsScheme = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+            socket = new WebSocket(wsScheme + window.location.host + '/ws/nlp_playground/');
+
+            socket.onopen = function(e) {
+                console.log('WebSocket connected');
+            };
+
+            socket.onmessage = function(e) {
+                const data = JSON.parse(e.data);
+                hideLoading();
+                
+                if (data.error) {
+                    showError(data.error);
+                } else {
+                    showResults(data.result);
+                }
+            };
+
+            socket.onclose = function(e) {
+                console.log('WebSocket disconnected');
+                // Attempt to reconnect
+                setTimeout(connectWebSocket, 1000);
+            };
+
+            socket.onerror = function(e) {
+                console.error('WebSocket error:', e);
+                showError('Connection error. Please try again later.');
+            };
+        }
+
+        // Show error message
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorAlert.classList.remove('d-none');
+            setTimeout(() => {
+                errorAlert.classList.add('d-none');
+            }, 5000);
+        }
+
+        // Show loading spinner
+        function showLoading() {
+            loadingSpinner.classList.remove('d-none');
+            submitBtn.disabled = true;
+            resultsSection.classList.add('d-none');
+        }
+
+        // Hide loading spinner
+        function hideLoading() {
+            loadingSpinner.classList.add('d-none');
+            submitBtn.disabled = false;
+        }
+
+        function setBadgeColor(element, value) {
+            element.classList.remove('bg-success', 'bg-warning', 'bg-danger', 'bg-info');
+            if (value.includes('POSITIVE') || value.includes('SUCCESS')) {
+                element.classList.add('bg-success');
+            } else if (value.includes('NEGATIVE')) {
+                element.classList.add('bg-danger');
+            } else if (value.includes('NEUTRAL')) {
+                element.classList.add('bg-warning');
+            } else {
+                element.classList.add('bg-info');
+            }
+        }
+
+        // Show results
+        function showResults(result) {
+            resultsSection.classList.remove('d-none');
+            
+            // Hide all result sections first
+            document.getElementById('sentiment-results').classList.add('d-none');
+            document.getElementById('intent-results').classList.add('d-none');
+            document.getElementById('topic-results').classList.add('d-none');
+            
+            const task = taskSelect.value;
+            const method = methodSelect.value;
+            const resultSection = document.getElementById(`${task}-results`);
+            resultSection.classList.remove('d-none');
+
+            // Common fields
+            const labelElement = document.getElementById(`${task}-label`);
+            const scoreElement = document.getElementById(`${task}-score`);
+            
+            // Set label and score
+            labelElement.textContent = result.label;
+            const scorePercentage = (result.score * 100).toFixed(2);
+            scoreElement.style.width = `${scorePercentage}%`;
+            scoreElement.textContent = `${scorePercentage}%`;
+
+            // Set appropriate badge colors
+            setBadgeColor(labelElement, result.label);
+
+            // Reset all explanation containers first
+            ['sentiment', 'intent', 'topic'].forEach(taskType => {
+                const container = document.getElementById(`${taskType}-explanation-container`);
+                const element = document.getElementById(`${taskType}-explanation`);
+                if (container) container.classList.add('d-none');
+                if (element) element.innerHTML = '';
+            });
+
+            // Task-specific additional information
+            if (task === 'sentiment') {
+                const emotionContainer = document.getElementById('sentiment-emotion-container');
+                const emotionElement = document.getElementById('sentiment-emotion');
+                const explanationContainer = document.getElementById('sentiment-explanation-container');
+                const explanationElement = document.getElementById('sentiment-explanation');
+
+                // Reset emotion container
+                emotionContainer.classList.add('d-none');
+                emotionElement.textContent = '';
+
+                if (result.granular_emotion) {
+                    emotionContainer.classList.remove('d-none');
+                    emotionElement.textContent = result.granular_emotion;
+                }
+
+                if (result.explanation && (method === 'few_shot_learning' || method === 'rag')) {
+                    explanationContainer.classList.remove('d-none');
+                    explanationElement.textContent = result.explanation;
+                } else if (result.explanation) {
+                    explanationContainer.classList.remove('d-none');
+                    explanationElement.textContent = result.explanation;
+                }
+            }
+            
+            else if (task === 'intent') {
+                const explanationContainer = document.getElementById('intent-explanation-container');
+                const explanationElement = document.getElementById('intent-explanation');
+
+                if (result.explanation && (method === 'few_shot_learning' || method === 'rag')) {
+                    explanationContainer.classList.remove('d-none');
+                    explanationElement.innerHTML = marked.parse(result.explanation);
+                } else if (result.explanation) {
+                    explanationContainer.classList.remove('d-none');
+                    explanationElement.textContent = result.explanation;
+                }
+            }
+            
+            else if (task === 'topic') {
+                const categoryContainer = document.getElementById('topic-category-container');
+                const categoryElement = document.getElementById('topic-category');
+                const wordsContainer = document.getElementById('topic-words-container');
+                const wordsElement = document.getElementById('topic-words');
+                const explanationContainer = document.getElementById('topic-explanation-container');
+                const explanationElement = document.getElementById('topic-explanation');
+
+                // Reset containers
+                categoryContainer.classList.add('d-none');
+                wordsContainer.classList.add('d-none');
+                categoryElement.textContent = '';
+                wordsElement.innerHTML = '';
+
+                if (result.category) {
+                    categoryContainer.classList.remove('d-none');
+                    categoryElement.textContent = result.category;
+                }
+
+                if (Array.isArray(result.label)) {
+                    wordsContainer.classList.remove('d-none');
+                    wordsElement.innerHTML = result.label.map(word => 
+                        `<span class="badge bg-secondary me-1 mb-1">${word}</span>`
+                    ).join('');
+                }
+
+                if (result.explanation && (method === 'few_shot_learning' || method === 'rag')) {
+                    explanationContainer.classList.remove('d-none');
+                    explanationElement.textContent = result.explanation;
+                }
+            }
+        }
+
+        // Handle form submission
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            if (!inputText.value.trim()) {
+                showError('Please enter some text to analyze');
+                return;
+            }
+
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                showError('Not connected. Please try again.');
+                return;
+            }
+
+            showLoading();
+            
+            socket.send(JSON.stringify({
+                method: methodSelect.value,
+                task: taskSelect.value,
+                text: inputText.value.trim()
+            }));
+        });
+
+        // Initialize WebSocket connection
+        connectWebSocket();
+    });
+</script>
+{% endblock %}
