@@ -89,3 +89,16 @@ class ProductViewSet(viewsets.ModelViewSet):
         if page is not None:
             return self.get_paginated_response(serializer.data)
         return Response(serializer.data)
+
+    @extend_schema(
+        summary="List featured products (stock > 50)",
+        responses=ProductSerializer(many=True),
+    )
+    @action(detail=False, methods=["get"], url_path="featured", url_name="featured")
+    def featured(self, request):
+        qs = self.get_queryset().filter(stock__gt=50)
+        page = self.paginate_queryset(qs)
+        serializer = self.get_serializer(page or qs, many=True)
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
