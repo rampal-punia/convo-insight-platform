@@ -10,7 +10,7 @@
 services:
   # --- PostgreSQL Database ---
   postgres:
-    image: postgres:17-alpine
+    image: pgvector/pgvector:pg17
     container_name: convoinsight-postgres
     environment:
       POSTGRES_DB: ${DB_NAME:-convoinsight}
