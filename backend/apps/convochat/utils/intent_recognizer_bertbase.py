@@ -1,13 +1,10 @@
 import logging
-import torch
-from transformers import DistilBertTokenizer, DistilBertForSequenceClassification, Trainer, TrainingArguments
 from typing import List, Dict, Union
-from torch.utils.data import Dataset
 
 logger = logging.getLogger(__name__)
 
 
-class IntentDataset(Dataset):
+class IntentDataset:
     def __init__(self, texts, labels, tokenizer):
         self.texts = texts
         self.labels = labels
@@ -17,6 +14,7 @@ class IntentDataset(Dataset):
         return len(self.texts)
 
     def __getitem__(self, idx):
+        import torch
         encoding = self.tokenizer(
             self.texts[idx], truncation=True, padding='max_length', max_length=128)
         item = {key: torch.tensor(val) for key, val in encoding.items()}
@@ -26,6 +24,8 @@ class IntentDataset(Dataset):
 
 class IntentRecognizer:
     def __init__(self, model_name: str = "distilbert-base-uncased", intent_labels=None):
+        import torch
+        from transformers import DistilBertTokenizer, DistilBertForSequenceClassification
         self.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu")
         self.tokenizer = DistilBertTokenizer.from_pretrained(model_name)
@@ -35,6 +35,8 @@ class IntentRecognizer:
             model_name, num_labels=len(self.intent_labels)).to(self.device)
 
     def fine_tune(self, texts: List[str], labels: List[int], epochs: int = 3):
+        from torch.utils.data import Dataset
+        from transformers import Trainer, TrainingArguments
         dataset = IntentDataset(texts, labels, self.tokenizer)
         training_args = TrainingArguments(
             output_dir="./results",
@@ -53,6 +55,7 @@ class IntentRecognizer:
         trainer.train()
 
     def recognize_intent(self, texts: List[str]) -> List[Dict[str, float]]:
+        import torch
         if isinstance(texts, str):
             texts = [texts]
         results = []
