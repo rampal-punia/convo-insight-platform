@@ -11,7 +11,7 @@ logger = logging.getLogger('convochat')
 
 
 # Title generation API
-API_URL = "https://router.huggingface.co/v1/models/czearing/article-title-generator"
+API_URL = "https://router.huggingface.co/hf-inference/models/czearing/article-title-generator"
 headers = {"Authorization": f"Bearer {settings.HUGGINGFACEHUB_API_TOKEN}"}
 
 
