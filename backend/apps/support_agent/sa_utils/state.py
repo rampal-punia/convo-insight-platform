@@ -42,13 +42,13 @@ class ECommerceState(InputState):
 
     This class can be used to store any information needed throughout the agent's lifecycle.
     """
-    order_info: Dict = field(default=False)
-    user_info: Dict = field(default=False)
-    intent: str = field(default=False)
-    conversation_id: str = field(default=False)
+    order_info: Dict = field(default_factory=dict)
+    user_info: Dict = field(default_factory=dict)
+    intent: str = field(default=None)
+    conversation_id: str = field(default=None)
     confirmation_pending: bool = field(default=False)
     completed: bool = field(default=False)
-    context: Dict[str, Any] = field(default=False)
+    context: Dict[str, Any] = field(default_factory=dict)
     is_last_step: IsLastStep = field(default=False)
     """
     Indicates whether the current step is the last one before the graph raises an error.
