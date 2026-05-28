@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+
+{% block title %}Login - ConvoInsight{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center mt-5">
+    <div class="col-md-4">
+        <div class="card shadow">
+            <div class="card-body p-4">
+                <h3 class="card-title text-center mb-4">Login</h3>
+                {% if form.errors %}
+                <div class="alert alert-danger">
+                    Please enter a correct username and password.
+                </div>
+                {% endif %}
+                {% crispy form %}
+                <div class="text-center mt-3">
+                    <small>
+                        Don't have an account? <a href="{% url 'account_signup' %}">Sign up</a>
+                    </small>
+                </div>
+                <div class="text-center mt-1">
+                    <small>
+                        <a href="{% url 'account_reset_password' %}">Forgot password?</a>
+                    </small>
+                </div>
+            </div>
+        </div>
+        <p class="text-center mt-3 text-muted small">
+            Demo: <code>demo_user_01</code> / <code>demo12345</code>
+        </p>
+    </div>
+</div>
+{% endblock %}
