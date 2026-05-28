@@ -2,9 +2,6 @@ import logging
 
 from datetime import timedelta
 from celery.schedules import crontab
-from .utils.sentiment_analyzer import SentimentAnalyzer
-from .utils.intent_recognizer_bertbase import IntentRecognizer
-from .utils.topic_modeler import TopicModeler
 from celery import shared_task
 from .models import Conversation, UserText, AIText, Message, Intent, Sentiment, Topic
 from analysis.models import (
@@ -14,8 +11,6 @@ from analysis.models import (
     TopicDistribution,
     IntentPrediction
 )
-from analysis.utils.agent_performance_evaluator import AgentPerformanceEvaluator
-from .models import Intent, Topic
 from django.db import transaction
 from django.utils import timezone
 
@@ -24,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 @shared_task
 def analyze_conversation_topics(conversation_id):
+    from .utils.topic_modeler import TopicModeler
     conversation = Conversation.objects.get(id=conversation_id)
     modeler = TopicModeler()
 
@@ -57,6 +53,7 @@ def analyze_conversation_topics(conversation_id):
 
 @shared_task
 def analyze_conversation_sentiment(conversation_id):
+    from .utils.sentiment_analyzer import SentimentAnalyzer
     conversation = Conversation.objects.get(id=conversation_id)
     analyzer = SentimentAnalyzer()
 
@@ -83,6 +80,7 @@ def analyze_conversation_sentiment(conversation_id):
 
 @shared_task
 def recognize_message_intent(message_id):
+    from .utils.intent_recognizer_bertbase import IntentRecognizer
     message = UserText.objects.get(id=message_id)
     recognizer = IntentRecognizer()
 
@@ -201,6 +199,7 @@ def evaluate_llm_performance(conversation_id, ai_message_id):
 
 @shared_task
 def evaluate_overall_performance(conversation_id):
+    from analysis.utils.agent_performance_evaluator import AgentPerformanceEvaluator
     evaluator = AgentPerformanceEvaluator()
     result = evaluator.evaluate_conversation(conversation_id)
 
@@ -274,6 +273,7 @@ def save_conversation_title(conversation_id, title):
 
 @shared_task
 def analyze_topics(conversation_id):
+    from .utils.topic_modeler import TopicModeler
     conversation = Conversation.objects.get(id=conversation_id)
     modeler = TopicModeler()
 
@@ -297,6 +297,7 @@ def analyze_topics(conversation_id):
 
 @shared_task
 def recognize_intent(message_id):
+    from .utils.intent_recognizer_bertbase import IntentRecognizer
     message = UserText.objects.get(id=message_id)
     recognizer = IntentRecognizer()
 
@@ -313,6 +314,7 @@ def recognize_intent(message_id):
 
 @shared_task
 def analyze_sentiment(message_id):
+    from .utils.sentiment_analyzer import SentimentAnalyzer
     message = UserText.objects.get(id=message_id)
     analyzer = SentimentAnalyzer()
 
