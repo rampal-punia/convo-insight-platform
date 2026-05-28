@@ -1,0 +1,33 @@
+<!-- templates/convochat/conversation_intent.html -->
+
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>Conversation Intent Analysis</h1>
+<h2>Conversation ID: {{ conversation.id }}</h2>
+
+{% if intent_predictions %}
+    <table>
+        <thead>
+            <tr>
+                <th>Message</th>
+                <th>Predicted Intent</th>
+                <th>Confidence</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for prediction in intent_predictions %}
+                <tr>
+                    <td>{{ prediction.message.content }}</td>
+                    <td>{{ prediction.intent.name }}</td>
+                    <td>{{ prediction.confidence_score|floatformat:2 }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% else %}
+    <p>No intent predictions available for this conversation.</p>
+{% endif %}
+
+<a href="{% url 'convochat:conversation_detail_url' conversation.id %}">Back to Conversation</a>
+{% endblock %}
