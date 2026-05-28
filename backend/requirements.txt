@@ -12,6 +12,7 @@ autobahn==25.12.2
 Automat==25.4.16
 bertopic==0.17.4
 billiard==4.2.4
+bleach==6.3.0
 cbor2==6.1.1
 celery==5.6.3
 certifi==2026.5.20
@@ -24,6 +25,7 @@ click-didyoumean==0.3.1
 click-plugins==1.1.1.2
 click-repl==0.3.0
 constantly==23.10.4
+coverage==7.14.1
 crispy-bootstrap5==2026.3
 cron-descriptor==1.4.5
 cryptography==48.0.0
@@ -45,7 +47,10 @@ django-jazzmin==3.0.4
 django-timezone-field==7.2.1
 django_celery_results==2.6.0
 djangorestframework==3.17.1
+djangorestframework_simplejwt==5.5.1
 drf-spectacular==0.29.0
+factory_boy==3.3.3
+Faker==40.19.1
 filelock==3.29.0
 frozenlist==1.8.0
 fsspec==2026.4.0
@@ -63,6 +68,7 @@ hyperlink==21.0.0
 idna==3.16
 Incremental==24.11.0
 inflection==0.5.1
+iniconfig==2.3.0
 Jinja2==3.1.6
 jiter==0.15.0
 joblib==1.5.3
@@ -78,6 +84,7 @@ langchain-core==1.4.0
 langchain-huggingface==1.2.2
 langchain-openai==1.2.2
 langchain-protocol==0.0.15
+langchain-tavily==0.2.18
 langchain-text-splitters==1.1.2
 langgraph==1.2.2
 langgraph-checkpoint==4.1.1
@@ -87,6 +94,7 @@ langsmith==0.8.5
 lazy-loader==0.5
 librosa==0.11.0
 llvmlite==0.47.0
+Markdown==3.10.2
 markdown-it-py==4.2.0
 MarkupSafe==3.0.3
 mdurl==0.1.2
@@ -113,13 +121,16 @@ nvidia-nvjitlink==13.0.88
 nvidia-nvshmem-cu13==3.4.5
 nvidia-nvtx==13.0.85
 openai==2.38.0
+opencv-python-headless==4.13.0.92
 orjson==3.11.9
 ormsgpack==1.12.2
 packaging==26.2
 pandas==3.0.3
+pgvector==0.4.2
 pillow==12.2.0
 platformdirs==4.9.6
 plotly==6.7.0
+pluggy==1.6.0
 pooch==1.9.0
 prompt_toolkit==3.0.52
 propcache==0.5.2
@@ -132,8 +143,12 @@ pydantic==2.13.4
 pydantic-settings==2.14.1
 pydantic_core==2.46.4
 Pygments==2.20.0
+PyJWT==2.13.0
 pynndescent==0.6.0
 pyOpenSSL==26.2.0
+pytest==9.0.3
+pytest-asyncio==1.4.0
+pytest-django==4.12.0
 python-crontab==3.3.0
 python-dateutil==2.9.0.post0
 python-decouple==3.8
@@ -183,24 +198,8 @@ urllib3==2.7.0
 uuid_utils==0.16.0
 vine==5.1.0
 wcwidth==0.7.0
+webencodings==0.5.1
 xxhash==3.7.0
 yarl==1.24.2
 zope.interface==8.5
 zstandard==0.25.0
-
-# --- Added during Step 2/3 revival (May 2026) ---
-pgvector==0.4.2
-markdown==3.10.2
-bleach==6.3.0
-webencodings==0.5.1
-djangorestframework-simplejwt==5.5.1
-PyJWT==2.13.0
-# Test stack (lightweight; full install only needed in CI/dev)
-pytest==9.0.3
-pytest-django==4.12.0
-pytest-asyncio==1.4.0
-factory-boy==3.3.3
-Faker==40.19.1
-coverage==7.14.1
-iniconfig==2.3.0
-pluggy==1.6.0
