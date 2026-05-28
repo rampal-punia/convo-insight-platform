@@ -53,6 +53,7 @@ class SupportAgentConsumer(AsyncWebsocketConsumer):
 
             self.tools = get_all_tools()
             self.username_cap = self.user.username.capitalize()
+            self.db_ops = DatabaseOperations(self.user)
 
             # Send welcome message
             await self.send_json({
@@ -94,10 +95,11 @@ class SupportAgentConsumer(AsyncWebsocketConsumer):
             await self.send_error(f"Error processing request: {str(e)}")
 
     async def handle_message(self, data: Dict[str, Any]):
-        """Process user message with state awareness"""
+        """Process user message through the LangGraph agent."""
         try:
             user_input = data.get('message')
             logger.info(f"Received user input: {user_input}")
+
             config = {
                 "configurable": {
                     "model": settings.GPT_MINI_STRING,
@@ -105,6 +107,9 @@ class SupportAgentConsumer(AsyncWebsocketConsumer):
                     "max_search_results": 3,
                     "system_prompt": assistant_prompt,
                     "max_tool_retries": 2,
+                    "db_ops": self.db_ops,
+                    "customer_id": str(self.user.id),
+                    "username": self.user.username,
                     "user_info": {
                         "username": self.user.username,
                         "id": self.user.id,
@@ -113,35 +118,12 @@ class SupportAgentConsumer(AsyncWebsocketConsumer):
                 }
             }
 
-            # Get existing state or create new
-            try:
-                current_state = graph.get_state(
-                    config).values["messages"][-1]
-                logger.info(f"Current state is {current_state}")
-
-                if current_state and current_state.values.get("messages"):
-                    # Append to existing messages
-                    initial_state = ECommerceState(
-                        messages=[*current_state.values["messages"],
-                                  HumanMessage(content=user_input)]
-                    )
-                    logger.info(
-                        f"Appended current state to initial state: {initial_state}")
-                else:
-                    # Create new state
-                    initial_state = ECommerceState(
-                        messages=[HumanMessage(content=user_input)]
-                    )
-                    logger.info(
-                        f"Create new state as initial state: {initial_state}")
-            except Exception as e:
-                logger.warning(
-                    f"Could not get previous state: {e}. Starting fresh.")
-                # Create new state
-                initial_state = ECommerceState(
-                    messages=[HumanMessage(content=user_input)]
-                )
-                logger.info(f"Initial state: {initial_state}")
+            # Just pass the new message — MemorySaver checkpointer restores
+            # previous conversation state automatically via thread_id.
+            # The add_messages reducer merges new messages with existing ones.
+            initial_state = ECommerceState(
+                messages=[HumanMessage(content=user_input)]
+            )
 
             # Track seen message IDs to prevent duplicates
             seen_messages = set()
