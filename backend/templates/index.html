@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+
+{% block title %}
+    Home Page
+{% endblock title %}
+
+{% block leftbar %}
+<div class="col-md-3">
+    {% include 'partials/_leftbar.html' %}
+</div>
+{% endblock leftbar %}
+
+{% block content %}
+<div class="col-md-7 mt-2 mx-4">
+    <div class="card">
+    <h5 class="card-header">Django Boilerplate to start a scalable WebApp Project.</h5>
+    <div class="card-body">
+        <h5 class="card-title">With User management and multiple apps for uploading images.</h5>
+        <p class="card-text">Use any one of the image upload method or you can try all first and decide...</p>
+        Start with selecting the 'single image upload' button from header.
+    </div>
+    </div>
+</div>  
+{% endblock content %}
