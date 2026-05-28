@@ -1,5 +1,8 @@
+import logging
 import torch
 from transformers import DistilBertTokenizer, DistilBertForSequenceClassification
+
+logger = logging.getLogger(__name__)
 
 model_name = "distilbert-base-uncased-finetuned-sst-2-english"
 
@@ -11,4 +14,4 @@ with torch.no_grad():
     logits = model(**inputs).logits
 
 predicted_class_id = logits.argmax().item()
-print(model.config.id2label[predicted_class_id])
+logger.info(model.config.id2label[predicted_class_id])
