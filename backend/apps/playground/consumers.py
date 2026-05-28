@@ -4,29 +4,13 @@ import re
 import time
 import logging
 import traceback
+import threading
 from typing import List, Dict
 from django.core.cache import cache
-from langchain_community.cache import RedisCache
-import redis
-from langchain_core.globals import set_llm_cache
-import torch
-import threading
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
-from langchain_openai import ChatOpenAI
-from langchain_core.prompts import (
-    ChatPromptTemplate,
-    FewShotChatMessagePromptTemplate,
-)
-from bertopic import BERTopic
-from transformers import pipeline
-from sentence_transformers import SentenceTransformer
 from django.conf import settings
 from convochat.models import Intent, Sentiment, GranularEmotion, Topic, SentimentCategory
-from .text_classification_vector_store import PGVectorStoreTextClassification
-from .text_classification_rag_processor import RAGProcessorTextClassification
-from .intent_recognitionwith_tr_bert import IntentModelTester
-from .sentiment_model_analysis import SentimentModelManager
 
 logger = logging.getLogger('playground')
 
@@ -56,8 +40,6 @@ class ModelManager:
                         'topic': threading.Lock(),
                         'ner': threading.Lock()
                     }
-                    self.device = torch.device(
-                        'cuda' if torch.cuda.is_available() else 'cpu')
 
                     # Start model loading in background
                     self._initialize_models()
@@ -95,6 +77,7 @@ class ModelManager:
 
     def _load_sentiment_model(self):
         """Load sentiment model with proper error handling"""
+        from .sentiment_model_analysis import SentimentModelManager
         try:
             with self._model_locks['sentiment']:
                 if 'sentiment' not in self.models:
@@ -110,6 +93,7 @@ class ModelManager:
 
     def _load_intent_model(self):
         """Load intent model with proper error handling"""
+        from .intent_recognitionwith_tr_bert import IntentModelTester
         try:
             with self._model_locks['intent']:
                 if 'intent' not in self.models:
@@ -124,6 +108,8 @@ class ModelManager:
 
     def _load_topic_model(self):
         """Load topic model with proper error handling"""
+        from bertopic import BERTopic
+        from sentence_transformers import SentenceTransformer
         try:
             with self._model_locks['topic']:
                 if 'topic' not in self.models:
@@ -143,14 +129,18 @@ class ModelManager:
 
     def _load_ner_model(self):
         """Load NER model with proper error handling"""
+        import torch
+        from transformers import pipeline
         try:
             with self._model_locks['ner']:
                 if 'ner' not in self.models:
                     logger.info("Loading NER model...")
+                    device = torch.device(
+                        'cuda' if torch.cuda.is_available() else 'cpu')
                     self.models['ner'] = pipeline(
                         'ner',
                         model=settings.FINETUNED_MODELS['ner']['path'],
-                        device=self.device,
+                        device=device,
                         batch_size=settings.FINETUNED_MODELS.get(
                             'ner', {}).get('batch_size', 32)
                     )
@@ -213,11 +203,16 @@ class EcommerceSentimentMapper:
 class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         """Accept WebSocket connection and initialize models"""
+        from langchain_community.cache import RedisCache
+        import redis as _redis
+        from langchain_core.globals import set_llm_cache
+        from langchain_openai import ChatOpenAI
+
         await self.accept()
 
         try:
             # Setup Redis cache for LLM
-            redis_client = redis.Redis.from_url(
+            redis_client = _redis.Redis.from_url(
                 url=settings.CACHES['default']['LOCATION'],
                 db=settings.CACHES['default']['OPTIONS'].get('db', 1),
                 decode_responses=True
@@ -255,6 +250,8 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
 
     async def initialize_components(self):
         """Initialize non-model components"""
+        from .text_classification_vector_store import PGVectorStoreTextClassification
+        from .text_classification_rag_processor import RAGProcessorTextClassification
         try:
             # Load examples from database
             self.topic_examples = await self.load_topic_examples()
@@ -300,6 +297,10 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
 
     def setup_prompts(self):
         """Setup few-shot prompts for each task"""
+        from langchain_core.prompts import (
+            ChatPromptTemplate,
+            FewShotChatMessagePromptTemplate,
+        )
 
         # Topic Classification Prompt
         topic_example_prompt = ChatPromptTemplate.from_messages([
