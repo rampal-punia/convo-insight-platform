@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}
+    ConvoInsight Dashboard
+{% endblock title %}
+
+{% block content %}
+<div class="col-md-11 col-sm-11 mx-2">
+    <div class="row">
+        <h1 class="display-4 mb-4">ConvoInsight: Revolutionizing Conversations</h1>
+        <div class="col-sm-6 mb-3 mb-sm-0">
+            <div class="card border-primary mb-3">
+                <div class="card-header bg-primary text-white">
+                    <h3 class="mb-0">Customer Support Agent</h3>
+                </div>
+                <div class="card-body">
+                    <h5 class="card-title">Elevate Your Customer Experience</h5>
+                    <p class="card-text">Experience lightning-fast, AI-powered customer support that understands context, sentiment, and intent. Our intelligent system provides personalized solutions, reducing wait times and increasing satisfaction.</p>
+                    <ul class="list-unstyled">
+                        <li><i class="fas fa-check-circle text-success"></i> 24/7 Availability</li>
+                        <li><i class="fas fa-check-circle text-success"></i> Multilingual Support</li>
+                        <li><i class="fas fa-check-circle text-success"></i> Seamless Human Handoff</li>
+                    </ul>
+                    <a href="{% url 'support_agent:support_agent_chat_url' %}" class="btn btn-primary btn-lg mt-3">Get Support Now</a>
+                    <a href="{% url "convochat:conversation_list_url" %}" class="btn btn-primary btn-lg mt-3">Support Chat History</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 mb-3 mb-sm-0">
+            <div class="card border-success mb-3">
+                <div class="card-header bg-success text-white">
+                    <h3 class="mb-0">AI General Assistant</h3>
+                </div>
+                <div class="card-body">
+                    <h5 class="card-title">Explore, Learn, and Create with AI</h5>
+                    <p class="card-text">Engage in fascinating conversations with our advanced Language Model. From brainstorming ideas to answering complex questions, our AI companion is your gateway to endless knowledge and creativity.</p>
+                    <ul class="list-unstyled">
+                        <li><i class="fas fa-brain text-info"></i> Deep Knowledge Base</li>
+                        <li><i class="fas fa-lightbulb text-warning"></i> Creative Assistance</li>
+                        <li><i class="fas fa-code text-danger"></i> Code Generation & Explanation</li>
+                    </ul>
+                    <a href="{% url 'general_assistant:new_generalchat_url' %}" class="btn btn-success btn-lg mt-3">Start Chatting</a>
+                    <a href="{% url 'general_assistant:generalchat_list_url' %}" class="btn btn-success btn-lg mt-3">General Chat History</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>  
+{% endblock content %}
