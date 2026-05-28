@@ -34,6 +34,7 @@ THIRD_PARTY_APPS = [
     "django_celery_results",
     "corsheaders",
     "crispy_bootstrap5",
+    "django_filters",
     "django_cleanup.apps.CleanupConfig",
     "allauth",
     "allauth.account",
