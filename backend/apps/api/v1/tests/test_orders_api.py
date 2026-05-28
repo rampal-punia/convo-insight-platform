@@ -156,20 +156,20 @@ class TestOrderTracking:
 
 
 class TestStaffActions:
-    def test_mark_shipped(self, staff_client, order):
-        resp = staff_client.post(f'/api/v1/orders/{order.pk}/mark-shipped/')
+    def test_mark_shipped(self, staff_client, staff_order):
+        resp = staff_client.post(f'/api/v1/orders/{staff_order.pk}/mark-shipped/')
         assert resp.status_code == 200
         assert resp.data['status'] == 'SH'
 
-    def test_non_staff_cannot_mark_shipped(self, auth_client, order):
-        resp = auth_client.post(f'/api/v1/orders/{order.pk}/mark-shipped/')
+    def test_non_staff_cannot_mark_shipped(self, auth_client, staff_order):
+        resp = auth_client.post(f'/api/v1/orders/{staff_order.pk}/mark-shipped/')
         assert resp.status_code == 403
 
-    def test_update_status(self, staff_client, order):
-        resp = staff_client.post(f'/api/v1/orders/{order.pk}/update-status/', {'status': 'PR'})
+    def test_update_status(self, staff_client, staff_order):
+        resp = staff_client.post(f'/api/v1/orders/{staff_order.pk}/update-status/', {'status': 'PR'})
         assert resp.status_code == 200
         assert resp.data['status'] == 'PR'
 
-    def test_update_status_invalid(self, staff_client, order):
-        resp = staff_client.post(f'/api/v1/orders/{order.pk}/update-status/', {'status': 'ZZ'})
+    def test_update_status_invalid(self, staff_client, staff_order):
+        resp = staff_client.post(f'/api/v1/orders/{staff_order.pk}/update-status/', {'status': 'ZZ'})
         assert resp.status_code == 400
