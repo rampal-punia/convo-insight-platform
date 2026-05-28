@@ -384,8 +384,8 @@ if __name__ == '__main__':
 
     async def test_searches():
         query = "what is artificial intelligence?"
-        print("\nTesting DuckDuckGo Search:")
+        logger.info("\nTesting DuckDuckGo Search:")
         ddg_results = await web_search(query, config={})
-        print(f"Found {len(ddg_results)} results")
+        logger.info(f"Found {len(ddg_results)} results")
 
     asyncio.run(test_searches())
