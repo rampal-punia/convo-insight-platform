@@ -29,8 +29,6 @@ from .intent_recognitionwith_tr_bert import IntentModelTester
 from .sentiment_model_analysis import SentimentModelManager
 
 logger = logging.getLogger('playground')
-# Force CPU if CUDA is unavailable
-# device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 class ModelManager:
@@ -403,43 +401,6 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
             })
         return examples
 
-    async def process_request(self, task, text, method):
-        """Process different types of requests"""
-        try:
-            if method == 'finetuned':
-                if task == 'sentiment':
-                    return await self.analyze_finetuned_sentiment(text)
-                elif task == 'intent':
-                    return await self.analyze_finetuned_intent(text)
-                elif task == 'topic':
-                    return await self.analyze_finetuned_topic(text)
-                elif task == 'ner':
-                    return await self.analyze_finetuned_ner(text)
-
-            elif method == 'few_shot_learning':
-                if task == 'sentiment':
-                    return await self.analyze_sentiment(text)
-                elif task == 'intent':
-                    return await self.analyze_intent(text)
-                elif task == 'topic':
-                    return await self.analyze_topic(text)
-
-            elif method == 'rag':
-                task_map = {
-                    'sentiment': 'SE',
-                    'intent': 'IN',
-                    'topic': 'TO'
-                }
-                rag_task = task_map[task]
-                return await self.rag_processor.process(text, rag_task)
-
-            raise ValueError(f"Invalid task or method: {task}, {method}")
-
-        except Exception as e:
-            logger.error(f"Error in process_request: {e}")
-            logger.error(traceback.format_exc())
-            raise
-
     async def receive(self, text_data):
         """Handle incoming WebSocket messages"""
         try:
@@ -576,11 +537,6 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
 
             if isinstance(text, str):
                 text = [text]
-
-            # Get embeddings from sentence transformer
-            # bert_topic = self.model_manager.get_model(
-            #     'topic')['bertopic']
-            # embeddings = bert_topic.encode(text)
 
             # Get topic prediction and probability
             bertopic_model = self.model_manager.get_model('topic')[
