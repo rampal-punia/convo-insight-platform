@@ -62,6 +62,52 @@ python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab'); nltk
 
 > **If you skip this**, the server will crash with `Can't find model 'en_core_web_sm'`.
 
+### Step 3c: Download pretrained ML models (Google Drive)
+
+The NLP Playground (sentiment analysis, intent detection, topic modelling) runs on fine-tuned models that are **not stored in git** (they are too large). You must download them manually from the shared Google Drive folder.
+
+**[Download ML models → ConvoInsight ML Models (Google Drive)](REPLACE_WITH_GDRIVE_LINK)**
+
+The archive contains three folders. Extract each one into the exact path shown below:
+
+| Archive | Extract to (relative to repo root) |
+|---------|-------------------------------------|
+| `sentiment_tr_model.zip` | `backend/apps/playground/sentiment_tr_model/` |
+| `bertmodel_intent_12nov24.zip` | `backend/apps/playground/bertmodel_intent_12nov24/` |
+| `fine_tuned_sentence_transformer.zip` | `backend/apps/playground/fine_tuned_sentence_transformer/` |
+
+**Quick extract commands** (run from repo root, after downloading to `~/Downloads/`):
+
+```bash
+cd backend/apps/playground
+
+unzip ~/Downloads/sentiment_tr_model.zip -d sentiment_tr_model/
+unzip ~/Downloads/bertmodel_intent_12nov24.zip -d bertmodel_intent_12nov24/
+unzip ~/Downloads/fine_tuned_sentence_transformer.zip -d fine_tuned_sentence_transformer/
+```
+
+After extraction your `backend/apps/playground/` should look like:
+
+```
+playground/
+├── sentiment_tr_model/
+│   ├── sentiment_model_6cls.pt          ← 476 MB fine-tuned sentiment model
+│   ├── tokenizer/
+│   ├── config.json
+│   └── label_encoder_classes.json
+├── bertmodel_intent_12nov24/
+│   ├── model.safetensors                ← 419 MB fine-tuned intent BERT
+│   ├── mappings.json
+│   └── trainer_state.json  (+ other config files)
+└── fine_tuned_sentence_transformer/
+    ├── model.safetensors                ← 87 MB sentence transformer
+    ├── trained_bertopic_transformer_model ← 89 MB BERTopic topic model
+    ├── tokenizer.json / vocab.txt  (+ other config files)
+    └── 1_Pooling/ 2_Normalize/
+```
+
+> **If you skip this**, the server still starts and all API/chat features work. Only the NLP Playground's "BERT", "GPT", and "BERTopic" tabs will fail when you run an analysis.
+
 ### Step 4: Set up environment variables
 
 ```bash
@@ -709,6 +755,18 @@ The spaCy NLP model hasn't been downloaded:
 cd backend
 python -m spacy download en_core_web_sm
 ```
+
+### NLP Playground returns an error or "model not found"
+
+The fine-tuned ML models are not in the repo. Follow **Step 3c** in this guide to download and place them from the Google Drive link. Verify the paths exist:
+
+```bash
+ls backend/apps/playground/sentiment_tr_model/sentiment_model_6cls.pt
+ls backend/apps/playground/bertmodel_intent_12nov24/model.safetensors
+ls backend/apps/playground/fine_tuned_sentence_transformer/trained_bertopic_transformer_model
+```
+
+If any of these are missing, re-run the unzip commands from Step 3c.
 
 ### `ModuleNotFoundError: No module named 'convochat'`
 
