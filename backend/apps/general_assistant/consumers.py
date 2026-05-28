@@ -7,6 +7,7 @@ from channels.db import database_sync_to_async
 from django.core.files.base import ContentFile
 
 from .models import GeneralConversation, GeneralMessage, AudioMessage, ImageMessage
+from convochat.utils.configure_llm import CustomPromptTemplates, LLMConfig
 from convochat.utils import configure_llm
 from .services import VoiceModalHandler, ImageModalHandler
 
@@ -28,7 +29,14 @@ class GeneralChatConsumer(AsyncWebsocketConsumer):
             'message': f"Welcome, {self.user}! You are now connected to the General-Assistant."
         }))
 
-        self.llm = configure_llm.get_chat_llm()
+        # Store prompt template and LLM model separately (not as an LCEL chain)
+        # to avoid StrOutputParser + streaming StopIteration bug on Python 3.12.
+        self._prompt = CustomPromptTemplates.get_chat_prompt()
+        self._llm_model = LLMConfig.get_llm(
+            model_name='gpt-4o-mini',
+            model_provider='openai',
+            temperature=0.1,
+        )
 
     async def disconnect(self, close_code):
         pass
@@ -54,6 +62,24 @@ class GeneralChatConsumer(AsyncWebsocketConsumer):
         elif input_type == 'IM':
             await self.handle_image_message(input_data)
 
+    async def _stream_llm(self, input_with_history):
+        """Stream from the LLM model directly, yielding content chunks.
+
+        Bypasses the LCEL chain (prompt | llm | StrOutputParser) to avoid
+        StrOutputParser leaking StopIteration into asyncio futures on Python 3.12.
+        """
+        messages = self._prompt.format_messages(**input_with_history)
+        chunks = []
+        async for chunk in self._llm_model.astream(messages):
+            content = chunk.content
+            if content:
+                await self.send(text_data=json.dumps({
+                    'event': 'on_parser_stream',
+                    'data': {'chunk': content},
+                }))
+                chunks.append(content)
+        return ''.join(chunks)
+
     async def process_text_response(
         self,
         user_message_dbi,
@@ -71,17 +97,7 @@ class GeneralChatConsumer(AsyncWebsocketConsumer):
             }
             logger.debug("input_with_history: %s", input_with_history)
 
-            # Generate AI response
-            llm_response_chunks = []
-            async for chunk in self.llm.astream_events(input_with_history, version='v2'):
-                if chunk['event'] in ['on_parser_start', 'on_parser_stream']:
-                    await self.send(text_data=json.dumps(chunk))
-
-                if chunk.get('event') == 'on_parser_end':
-                    output = chunk.get('data', {}).get('output', '')
-                    llm_response_chunks.append(output)
-
-            ai_response = ''.join(llm_response_chunks)
+            ai_response = await self._stream_llm(input_with_history)
 
             # Generate and update title
             if self.conversation_dbi.title == 'Untitled Conversation' or self.conversation_dbi.title is None:
@@ -186,16 +202,8 @@ class GeneralChatConsumer(AsyncWebsocketConsumer):
             'input': input_text
         }
 
-        llm_response_chunks = []
-        async for chunk in self.llm.astream_events(input_with_history, version='v2'):
-            if chunk['event'] in ['on_parser_start', 'on_parser_stream']:
-                await self.send(text_data=json.dumps(chunk))
+        ai_response = await self._stream_llm(input_with_history)
 
-            if chunk.get('event') == 'on_parser_end':
-                output = chunk.get('data', {}).get('output', '')
-                llm_response_chunks.append(output)
-
-        ai_response = ''.join(llm_response_chunks)
         if not ai_response:
             ai_response = "I apologize, but I couldn't generate a response. Please try asking your question again."
 
