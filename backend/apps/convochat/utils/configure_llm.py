@@ -309,7 +309,7 @@ def get_chat_llm(model_name='gpt-4o-mini', model_provider='openai'):
 
 
 async def generate_title(conversation_content):
-    API_URL_TITLE = "https://router.huggingface.co/v1/models/czearing/article-title-generator"
+    API_URL_TITLE = "https://router.huggingface.co/hf-inference/models/czearing/article-title-generator"
     headers = {"Authorization": f"Bearer {settings.HUGGINGFACEHUB_API_TOKEN}"}
     async with aiohttp.ClientSession() as session:
         async with session.post(
@@ -327,7 +327,7 @@ async def generate_title(conversation_content):
 
 
 async def generate_summary(conversation_content):
-    API_URL_SUMMARY = "https://router.huggingface.co/v1/models/facebook/bart-large-cnn"
+    API_URL_SUMMARY = "https://router.huggingface.co/hf-inference/models/facebook/bart-large-cnn"
     headers = {"Authorization": f"Bearer {settings.HUGGINGFACEHUB_API_TOKEN}"}
     async with aiohttp.ClientSession() as session:
         async with session.post(
