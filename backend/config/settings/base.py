@@ -95,7 +95,17 @@ LOGOUT_REDIRECT_URL = None
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [BASE_DIR / "templates"],
+        "DIRS": [
+            BASE_DIR / "templates",
+            BASE_DIR / "apps" / "dashboard" / "templates",
+            BASE_DIR / "apps" / "accounts" / "templates",
+            BASE_DIR / "apps" / "convochat" / "templates",
+            BASE_DIR / "apps" / "orders" / "templates",
+            BASE_DIR / "apps" / "general_assistant" / "templates",
+            BASE_DIR / "apps" / "support_agent" / "templates",
+            BASE_DIR / "apps" / "playground" / "templates",
+            BASE_DIR / "apps" / "analysis" / "templates",
+        ],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -314,26 +324,6 @@ SPECTACULAR_SETTINGS = {
     # NOTE: Two cosmetic enum-naming warnings about a shared `status` field across
     # Order / OrderTracking / Conversation are accepted in Step 1. They do not
     # affect schema correctness. Will be addressed in Step 2 if needed.
-}
-# =============================================================================
-# JWT Authentication (Step 2)
-# =============================================================================
-from datetime import timedelta  # noqa: E402
-
-SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
-    'ROTATE_REFRESH_TOKENS': True,
-    'BLACKLIST_AFTER_ROTATION': True,
-    'UPDATE_LAST_LOGIN': True,
-    'ALGORITHM': 'HS256',
-    'SIGNING_KEY': config('DJANGO_SECRET_KEY', default='dev-only-signing-key'),
-    'AUTH_HEADER_TYPES': ('Bearer',),
-    'USER_ID_FIELD': 'id',
-    'USER_ID_CLAIM': 'user_id',
-    'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
-    'TOKEN_TYPE_CLAIM': 'token_type',
-    'JTI_CLAIM': 'jti',
 }
 # =============================================================================
 # JWT Authentication (Step 2)
