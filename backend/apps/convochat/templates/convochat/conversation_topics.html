@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>Conversation Topic Analysis</h1>
+<h2>Conversation ID: {{ conversation.id }}</h2>
+
+{% if conversation.dominant_topic %}
+    <h3>Dominant Topic: {{ conversation.dominant_topic.name }}</h3>
+{% endif %}
+
+{% if topic_distributions %}
+    <h3>Topic Distributions:</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Topic</th>
+                <th>Weight</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for distribution in topic_distributions %}
+                <tr>
+                    <td>{{ distribution.topic.name }}</td>
+                    <td>{{ distribution.weight|floatformat:2 }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% else %}
+    <p>No topic distributions available for this conversation.</p>
+{% endif %}
+
+<a href="{% url 'convochat:conversation_detail_url' conversation.id %}">Back to Conversation</a>
+{% endblock %}
