@@ -42,6 +42,17 @@ pip install -r requirements.txt
 
 This takes a minute or two (there are ML packages including PyTorch). Go grab water.
 
+### Step 3b: Download NLP models
+
+The project uses spaCy and NLTK for text processing. Download the required models:
+
+```bash
+python -m spacy download en_core_web_sm
+python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab'); nltk.download('stopwords'); nltk.download('wordnet')"
+```
+
+> **If you skip this**, the server will crash with `Can't find model 'en_core_web_sm'`.
+
 ### Step 4: Set up environment variables
 
 ```bash
@@ -166,6 +177,53 @@ sys.path.insert(0, str(BASE_DIR / "apps"))
 ```
 
 This adds the `apps/` directory to Python's module search path. That's why imports look like `from convochat.models import Conversation` instead of `from apps.convochat.models import Conversation`. When you create a new app, you use the short name.
+
+### Django Templates Overview (for backend interns)
+
+The project has both an API layer (DRF) **and** a server-rendered HTML layer (Django templates). While we're porting to Next.js, the Django templates are still used for auth pages and the dashboard.
+
+**Template directory structure:**
+
+```
+backend/
+├── templates/            ← Global templates (TEMPLATES DIRS in settings)
+│   ├── base.html         ← Base layout (navbar, Bootstrap 5, messages)
+│   ├── accounts/
+│   │   ├── login.html       ← Custom login form (uses crispy-forms)
+│   │   ├── signup.html      ← Custom signup form
+│   │   ├── confirm_passwordreset.html  ← Password reset form
+│   │   └── profile.html     ← Profile edit form
+│   └── dashboard/
+│       └── dashboard.html   ← Main dashboard (card grid with quick links)
+└── static/               ← Static files (CSS, JS, images)
+```
+
+**How it fits together:**
+
+1. **`config/settings/base.py`** sets `TEMPLATES[0]['DIRS']` to `BASE_DIR / "templates"` — so Django looks in `backend/templates/` first, then in each app's `templates/` directory (because `APP_DIRS = True`).
+
+2. **`apps/accounts/views.py`** defines `CustomLoginView`, `CustomSignupView`, etc. Each specifies a `template_name` like `'accounts/login.html'` and a `form_class` using crispy-forms with Bootstrap 5.
+
+3. **`apps/accounts/forms.py`** defines the forms with `FormHelper` and `Layout` from crispy-forms — this controls field ordering, placeholders, and submit buttons without writing HTML manually.
+
+4. **`base.html`** uses Bootstrap 5 (via CDN), shows the navbar only when authenticated, and renders Django messages as alert banners.
+
+**Key files to read in order:**
+
+| File | What it does |
+|------|-------------|
+| `backend/templates/base.html` | Base layout — every other template extends this |
+| `backend/apps/accounts/views.py` | Auth views (login, signup, profile) |
+| `backend/apps/accounts/forms.py` | Crispy-forms definitions with Bootstrap 5 styling |
+| `backend/config/urls.py` | URL routing — maps paths to views |
+| `backend/apps/dashboard/views.py` | Dashboard view — renders `dashboard/dashboard.html` |
+
+**To add a new template page:**
+
+1. Create the view in the appropriate app's `views.py`
+2. Add a URL path in `urls.py`
+3. Create the template in `backend/templates/<appname>/` extending `base.html`
+4. Use `{% load crispy_forms_tags %}` and `{% crispy form %}` for forms
 
 ### How a request flows
 
@@ -523,6 +581,7 @@ cd backend
 | Stop everything | `docker compose down` |
 | Full reset (deletes DB data) | `docker compose down -v` |
 | Run Django dev server | `python manage.py runserver` |
+| Download NLP models | `make download-nlp-data` (from repo root) |
 | Start Celery worker | `celery -A config worker -l info` |
 | Start Celery beat | `celery -A config beat -l info` |
 | Start frontend (new terminal) | `cd ../frontend && npm run dev` |
@@ -615,6 +674,15 @@ Or you need to install deps:
 
 ```bash
 cd backend && pip install -r requirements.txt
+```
+
+### `Can't find model 'en_core_web_sm'`
+
+The spaCy NLP model hasn't been downloaded:
+
+```bash
+cd backend
+python -m spacy download en_core_web_sm
 ```
 
 ### `ModuleNotFoundError: No module named 'convochat'`
