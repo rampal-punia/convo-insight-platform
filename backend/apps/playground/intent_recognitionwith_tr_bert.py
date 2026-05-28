@@ -1,10 +1,13 @@
 import json
+import logging
 import torch
 from torch import nn
 import torch.nn.functional as F
 from safetensors.torch import load_file
 from transformers import AutoTokenizer, AutoModel
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class ImprovedIntentClassifier(nn.Module):
@@ -140,8 +143,8 @@ if __name__ == "__main__":
 
     for text in test_texts:
         prediction = model_tester.predict(text)
-        print("\nInput text:", text)
-        print(
+        logger.info("\nInput text:", text)
+        logger.info(
             f"Predicted category: {prediction['category']} (Confidence: {prediction['category_confidence']:.2f})")
-        print(
+        logger.info(
             f"Predicted intent: {prediction['intent']} (Confidence: {prediction['intent_confidence']:.2f})")
