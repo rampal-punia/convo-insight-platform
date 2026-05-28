@@ -1,0 +1,113 @@
+{% load static %}
+<nav id="sidebarMenu" class="col-sm-3 col-md-3 col-lg-2 d-md-block bg-dark sidebar collapse text-white">
+    <div class="sidebar-sticky pt-3">
+        <ul class="nav flex-column mb-5">
+            <li class="nav-item">
+                <a class="nav-link {% if request.resolver_match.url_name == 'home_url' %}active{% endif %}" href="{% url 'dashboard:home_url' %}">
+                    <span data-feather="home"></span>
+                    Dashboard
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.resolver_match.url_name == 'nlp_playground' %}active{% endif %}" href="{% url 'playground:nlp_playground_url' %}">
+                    <span data-feather="zap"></span> <!-- NLP Playground -->
+                    NLP Playground
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.resolver_match.url_name == 'new_conversation_url' %}active{% endif %}" href="{% url 'support_agent:support_agent_chat_url' %}">
+                    <span data-feather="headphones"></span> <!-- Customer Support -->
+                    Customer Support
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="{% url "convochat:conversation_list_url" %}">
+                    <span data-feather="message-circle"></span>
+                    Support Chat History
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.resolver_match.url_name == 'new_generalchat_url' %}active{% endif %}" href="{% url 'general_assistant:new_generalchat_url' %}">
+                    <span data-feather="message-square"></span> <!-- General Assistance -->
+                    General Assistance
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="{% url 'general_assistant:generalchat_list_url' %}">
+                    <span data-feather="message-circle"></span>
+                    General Chat History
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#">
+                    <span data-feather="layers"></span>
+                    Settings
+                </a>
+            </li>
+        </ul>
+        
+        <ul class="nav flex-column mb-5">
+            {% if user.is_superuser %}
+                <hr>
+                <h6 class="sidebar-heading d-flex justify-content-between align-items-center px-3 mt-2 mb-4 text-white">
+                    <span>Admin</span>
+                </h6>
+                <li class="nav-item">
+                    <a class="nav-link" href="/admin/">
+                        <span data-feather="users"></span>
+                        Admin Site
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="#">
+                        <span data-feather="bar-chart-2"></span>
+                        Analytics
+                    </a>
+                </li>
+            {% endif %}
+        </ul>
+
+        <ul class="nav flex-column mb-5">
+            {% if user.is_authenticated %}
+                <hr>
+                <h6 class="sidebar-heading d-flex justify-content-between align-items-center px-3 mt-2 mb-4 text-white">
+                    <span>Account</span>
+                </h6>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.resolver_match.url_name == 'profile' %}active{% endif %}" href="{% url 'orders:order_create_url' %}">
+                        <span data-feather="shopping-bag"></span> New Order
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.resolver_match.url_name == 'profile' %}active{% endif %}" href="{% url 'orders:order_list_url' %}">
+                        <span data-feather="shopping-bag"></span> Orders
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.resolver_match.url_name == 'profile' %}active{% endif %}" href="{% url 'account_profile' %}">
+                        <span data-feather="user"></span> Profile
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <form method="post" action="{% url 'account_logout' %}">
+                        {% csrf_token %}
+                        <button type="submit" class="nav-link btn btn-link">
+                            <span data-feather="log-out"></span> Logout
+                        </button>
+                    </form>
+                </li>
+            {% else %}
+                <li class="nav-item">
+                    <a class="nav-link {% if request.resolver_match.url_name == 'login' %}active{% endif %}" href="{% url 'account_login' %}">
+                        <span data-feather="log-in"></span> Login
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.resolver_match.url_name == 'register' %}active{% endif %}" href="{% url 'account_signup' %}">
+                        <span data-feather="user-plus"></span> Sign Up
+                    </a>
+                </li>
+            {% endif %}
+    </ul>
+    </div>
+</nav>
