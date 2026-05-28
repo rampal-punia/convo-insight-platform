@@ -1,4 +1,3 @@
-from sentence_transformers import SentenceTransformer
 from typing import List, Dict
 from .models import RAGTextClassificationDocument
 from django.db.models import Q
@@ -11,6 +10,7 @@ from django.db import transaction
 
 class PGVectorStoreTextClassification:
     def __init__(self):
+        from sentence_transformers import SentenceTransformer
         self.model = SentenceTransformer('all-MiniLM-L6-v2')
 
     @transaction.atomic
