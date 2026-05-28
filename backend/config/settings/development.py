@@ -1,7 +1,16 @@
 # config/settings/development.py
 
+import os
+
 from .base import *
 from decouple import config
+
+# Export keys from .env into os.environ so that third-party libraries
+# (langchain, langchain_tavily, etc.) that read os.environ directly
+# can pick them up.  python-decouple reads .env but does NOT export.
+for _key in ('OPENAI_API_KEY', 'HUGGINGFACEHUB_API_TOKEN', 'TAVILY_API_KEY'):
+    if _key not in os.environ:
+        os.environ[_key] = config(_key, default='')
 
 
 # SECURITY WARNING: don't run with debug turned on in production!
