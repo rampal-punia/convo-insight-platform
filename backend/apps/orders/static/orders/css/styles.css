@@ -1,0 +1,363 @@
+/* Chat Interface */
+.chat-container {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 80vh;
+    padding-left: 10px;
+    border-radius: 0.5rem;
+    border: 1px solid #dee2e6;
+}
+
+#qa-container {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 12px;
+    height: auto;
+}
+
+.qa-pair {
+    margin-bottom: 15px;
+    height: auto;
+}
+
+.question-textarea {
+    width: 50%;
+    overflow: hidden;
+    resize: none;
+    /* Prevents manual resizing */
+    border-radius: 15px;
+    padding: 12px;
+    background-color: #0452b2;
+    margin-bottom: 10px;
+    color: #ffffff;
+}
+
+.answer-area {
+    width: 100%;
+    padding: 12px;
+}
+
+@media (max-width: 1080px) {
+    .fixed-bottom-input {
+        position: fixed;
+        bottom: 0;
+        width: 62%;
+        height: auto;
+        margin-left: 32px;
+        padding: 12px;
+        background-color: #fff;
+        border: 1px solid black;
+    }
+}
+
+/* Shrink bottom question area styles */
+@media (min-width: 1080px) {
+    .fixed-bottom-input {
+        position: fixed;
+        bottom: 0;
+        width: 72%;
+        height: auto;
+        margin-left: 32px;
+        padding: 12px;
+        background-color: #fff;
+        border: 1px solid black;
+    }
+}
+
+/* Markdown specific css */
+.message-content {
+    white-space: normal;
+    word-wrap: break-word;
+}
+
+.message-content pre {
+    background-color: #1c1c1c;
+    border: 1px solid #000000;
+    border-left: 3px solid #ff6f00;
+    color: #ebebeb;
+    page-break-inside: avoid;
+    font-family: monospace;
+    font-size: 15px;
+    line-height: 1.7em;
+    max-width: 100%;
+    overflow: auto;
+    padding: 10px 10px;
+    display: block;
+    white-space: pre-wrap;
+}
+
+.message-content code {
+    background-color: #1c1c1c;
+    border-radius: 3px;
+    font-family: monospace;
+}
+
+/* Added 19 Nov */
+
+/* Status Badge Styles */
+.status-badge {
+    padding: 0.5rem 1rem;
+    border-radius: 1rem;
+    font-weight: 500;
+}
+
+.status-pending {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+.status-processing {
+    background-color: #cce5ff;
+    color: #004085;
+}
+
+.status-shipped {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.status-delivered {
+    background-color: #d1e7dd;
+    color: #0f5132;
+}
+
+.status-cancelled {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+/* Timeline Styles */
+.tracking-timeline {
+    position: relative;
+    padding: 2rem 0;
+}
+
+.timeline-item {
+    position: relative;
+    padding-left: 3rem;
+    margin-bottom: 2rem;
+}
+
+.timeline-item::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background-color: #dee2e6;
+}
+
+.timeline-item::after {
+    content: '';
+    position: absolute;
+    left: -6px;
+    top: 0;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background-color: #fff;
+    border: 2px solid #007bff;
+}
+
+.timeline-item.active::after {
+    background-color: #007bff;
+}
+
+/* Map Container */
+.tracking-map {
+    height: 300px;
+    border-radius: 0.5rem;
+    margin: 1rem 0;
+    background-color: #f8f9fa;
+}
+
+.chat-messages {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 8px 8px 0 0;
+}
+
+.chat-input {
+    border-top: 1px solid #dee2e6;
+    padding: 1rem;
+    background-color: #fff;
+}
+
+.chat-input-area {
+    padding: 15px;
+    background: white;
+    border-top: 1px solid #dee2e6;
+    border-radius: 0 0 8px 8px;
+}
+
+.message {
+    margin: 10px 0;
+    padding: 10px 15px;
+    border-radius: 15px;
+    max-width: 80%;
+    word-wrap: break-word;
+}
+
+.system-message {
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+}
+
+.intent-selector {
+    margin: 20px 0;
+    padding: 20px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    background-color: #f8f9fa;
+}
+
+.intent-btn {
+    margin: 8px;
+    padding: 15px 25px;
+    border: 2px solid #0d6efd;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    width: 100%;
+    text-align: left;
+    position: relative;
+    background-color: white;
+}
+
+.intent-btn:hover {
+    background-color: #f0f7ff;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.intent-btn.active {
+    background-color: #0d6efd;
+    color: white;
+}
+
+.intent-btn i {
+    position: absolute;
+    right: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.intent-description {
+    margin-top: 15px;
+    padding: 15px;
+    background-color: #fff;
+    border-radius: 6px;
+    border-left: 4px solid #0d6efd;
+}
+
+.response-area {
+    margin-top: 20px;
+    padding: 20px;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    min-height: 100px;
+    display: none;
+    animation: fadeIn 0.3s ease-in;
+}
+
+.loading-spinner {
+    display: none;
+    text-align: center;
+    margin: 20px 0;
+}
+
+.spinner-border {
+    width: 3rem;
+    height: 3rem;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Message bubbles */
+.user-message {
+    background: #0d6efd;
+    color: white;
+    margin-left: auto;
+    border-bottom-right-radius: 5px;
+}
+
+.user-message .message-time {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.assistant-message {
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    margin-right: auto;
+    border-bottom-left-radius: 5px;
+}
+
+.tool-response {
+    background-color: #e8f4ff;
+    border-left: 4px solid #0d6efd;
+}
+
+.confirmation-dialog {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    padding: 20px;
+    margin: 10px 0;
+    border: 2px solid #0d6efd;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1000;
+    min-width: 300px;
+    max-width: 80%;
+}
+
+.confirmation-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+}
+
+.confirmation-buttons {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.confirmation-reason {
+    margin-top: 10px;
+    font-size: 0.9em;
+    color: #666;
+}
+
+.chat-interface {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    background: #fff;
+    margin-top: 20px;
+}
+
+.message-time {
+    font-size: 0.75rem;
+    color: #6c757d;
+    margin-top: 5px;
+}
