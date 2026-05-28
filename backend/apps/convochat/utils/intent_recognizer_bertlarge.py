@@ -1,6 +1,9 @@
+import logging
 import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from typing import List, Dict
+
+logger = logging.getLogger(__name__)
 
 
 class IntentRecognizer:
@@ -49,13 +52,13 @@ if __name__ == "__main__":
     ]
     results = recognizer.recognize_intent(texts)
     for result in results:
-        print(f"Text: {result['text']}")
-        print(f"Predicted Intent: {result['predicted_intent']}")
-        print(f"Confidence: {result['confidence']:.2f}")
-        print("All Intents:")
+        logger.info(f"Text: {result['text']}")
+        logger.info(f"Predicted Intent: {result['predicted_intent']}")
+        logger.info(f"Confidence: {result['confidence']:.2f}")
+        logger.info("All Intents:")
         for intent, score in result['all_intents'].items():
-            print(f"  {intent}: {score:.2f}")
-        print()
+            logger.info(f"  {intent}: {score:.2f}")
+        logger.info("")
 
     # Output
     '''
