@@ -1,6 +1,9 @@
+import logging
 import torch
 from transformers import DistilBertTokenizer, DistilBertForSequenceClassification
 from typing import List, Dict, Union
+
+logger = logging.getLogger(__name__)
 
 
 class SentimentAnalyzer:
@@ -43,7 +46,7 @@ if __name__ == "__main__":
     analyzer = SentimentAnalyzer()
     texts = "Yeah, that may work"
     results = analyzer.analyze_sentiment(texts)
-    print(results)
+    logger.info(results)
     texts = [
         "I love this product! It's amazing!",
         "This is terrible, I'm very disappointed.",
@@ -51,6 +54,6 @@ if __name__ == "__main__":
     ]
     results = analyzer.analyze_sentiment(texts)
     for text, sentiment in zip(texts, results):
-        print(f"Text: {text}")
-        print(f"Sentiment: {sentiment}")
-        print()
+        logger.info(f"Text: {text}")
+        logger.info(f"Sentiment: {sentiment}")
+        logger.info("")
