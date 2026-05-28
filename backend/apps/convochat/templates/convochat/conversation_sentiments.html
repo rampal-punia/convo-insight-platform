@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>Conversation Sentiment Analysis</h1>
+<h2>Conversation ID: {{ conversation.id }}</h2>
+
+{% if sentiment_score is not None %}
+    <p>Overall Sentiment Score: {{ sentiment_score|floatformat:2 }}</p>
+    {% if sentiment_score > 0.5 %}
+        <p>This conversation has a very positive sentiment.</p>
+    {% elif sentiment_score > 0 %}
+        <p>This conversation has a somewhat positive sentiment.</p>
+    {% elif sentiment_score == 0 %}
+        <p>This conversation has a neutral sentiment.</p>
+    {% elif sentiment_score > -0.5 %}
+        <p>This conversation has a somewhat negative sentiment.</p>
+    {% else %}
+        <p>This conversation has a very negative sentiment.</p>
+    {% endif %}
+{% else %}
+    <p>Sentiment analysis has not been performed on this conversation yet.</p>
+{% endif %}
+
+<a href="{% url 'convochat:conversation_detail_url' conversation.id %}">Back to Conversation</a>
+{% endblock %}
