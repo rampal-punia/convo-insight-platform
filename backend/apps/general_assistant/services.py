@@ -16,7 +16,7 @@ import soundfile as sf
 
 logger = logging.getLogger('general_assistant')
 
-API_URL = "https://router.huggingface.co/v1/models/Salesforce/blip-image-captioning-large"
+API_URL = "https://router.huggingface.co/hf-inference/models/Salesforce/blip-image-captioning-large"
 headers = {"Authorization": f"Bearer {settings.HUGGINGFACEHUB_API_TOKEN}"}
 
 
