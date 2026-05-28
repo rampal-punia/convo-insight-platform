@@ -1,6 +1,4 @@
 import logging
-import torch
-from transformers import DistilBertTokenizer, DistilBertForSequenceClassification
 from typing import List, Dict, Union
 
 logger = logging.getLogger(__name__)
@@ -8,6 +6,8 @@ logger = logging.getLogger(__name__)
 
 class SentimentAnalyzer:
     def __init__(self, model_name: str = "distilbert-base-uncased-finetuned-sst-2-english"):
+        import torch
+        from transformers import DistilBertTokenizer, DistilBertForSequenceClassification
         self.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu")
         self.tokenizer = DistilBertTokenizer.from_pretrained(model_name)
@@ -15,6 +15,7 @@ class SentimentAnalyzer:
             model_name).to(self.device)
 
     def analyze_sentiment(self, texts: List[str]) -> List[Dict[str, float]]:
+        import torch
         encoded_inputs = self.tokenizer(
             texts, padding=True, truncation=True, return_tensors="pt")
         encoded_inputs = {k: v.to(self.device)
