@@ -1,20 +1,12 @@
 import os
 import logging
-import torch
-from transformers import (
-    AutoTokenizer,
-    AutoModelForSequenceClassification,
-    TrainingArguments,
-    Trainer,
-)
-from datasets import load_dataset
-from sklearn.model_selection import train_test_split
 
 logger = logging.getLogger(__name__)
 
 
 class LLMFineTuner:
     def __init__(self, model_name, dataset_path, output_dir, num_labels=2, num_epochs=3, batch_size=8, learning_rate=2e-5):
+        from transformers import AutoTokenizer, AutoModelForSequenceClassification
         self.model_name = model_name
         self.dataset_path = dataset_path
         self.output_dir = output_dir
@@ -27,6 +19,8 @@ class LLMFineTuner:
             model_name, num_labels=self.num_labels)
 
     def prepare_dataset(self):
+        from datasets import load_dataset
+        from sklearn.model_selection import train_test_split
         dataset = load_dataset('csv', data_files=self.dataset_path)
         train_dataset, test_dataset = train_test_split(
             dataset['train'], test_size=0.2)
@@ -43,6 +37,7 @@ class LLMFineTuner:
         return tokenized_dataset
 
     def setup_trainer(self, train_dataset, test_dataset):
+        from transformers import TrainingArguments, Trainer
         training_args = TrainingArguments(
             output_dir=self.output_dir,
             num_train_epochs=self.num_epochs,
@@ -81,6 +76,7 @@ class LLMFineTuner:
         self.tokenizer.save_pretrained(self.output_dir)
 
     def load_model(self):
+        from transformers import AutoModelForSequenceClassification, AutoTokenizer
         model = AutoModelForSequenceClassification.from_pretrained(
             self.output_dir, num_labels=self.num_labels)
         tokenizer = AutoTokenizer.from_pretrained(self.output_dir)
