@@ -91,6 +91,8 @@ docker compose ps
 
 You should see both `convoinsight-postgres` and `convoinsight-redis` showing `healthy` (it might take 10-20 seconds).
 
+> **pgvector is handled automatically.** The Docker image (`pgvector/pgvector:pg17`) includes the extension binary, and the first `migrate` run enables it in the database. You don't need to do anything extra.
+
 ### Step 6: Set up the database
 
 ```bash
@@ -98,7 +100,7 @@ cd backend
 python manage.py migrate
 ```
 
-You'll see a bunch of `Applying <something>... OK` lines. That's Django creating tables.
+You'll see a bunch of `Applying <something>... OK` lines. That's Django creating tables. The `vector` extension (used for similarity search in the NLP playground) is enabled automatically here.
 
 Now load sample data:
 
@@ -107,6 +109,20 @@ python manage.py seed_demo
 ```
 
 This creates demo products, users, and orders so you have something to work with.
+
+Next, seed the NLP data used by the playground features (intent/topic/RAG classifiers):
+
+```bash
+python manage.py create_intents
+python manage.py create_topics
+python manage.py populate_rag_store
+```
+
+- `create_intents` — loads 11 customer-support intent labels (e.g. "Track Order", "Request Refund")
+- `create_topics` — loads 12 conversation topic categories (e.g. "Shipping & Delivery", "Payment & Billing")
+- `populate_rag_store` — encodes the intents and topics as vector embeddings and stores them in PostgreSQL for RAG-based classification
+
+> **If you skip these**, the NLP playground will still start, but the RAG sentiment/intent/topic tab will return no results.
 
 ### Step 7: Start the backend server
 
