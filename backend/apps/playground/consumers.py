@@ -8,7 +8,7 @@ from typing import List, Dict
 from django.core.cache import cache
 from langchain_community.cache import RedisCache
 import redis
-from langchain.globals import set_llm_cache
+from langchain_core.globals import set_llm_cache
 import torch
 import threading
 from channels.generic.websocket import AsyncWebsocketConsumer
