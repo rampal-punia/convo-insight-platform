@@ -10,9 +10,15 @@ from django.core.cache import cache
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.conf import settings
-from convochat.models import Intent, Sentiment, GranularEmotion, Topic, SentimentCategory
+from convochat.models import (
+    Intent,
+    Sentiment,
+    GranularEmotion,
+    Topic,
+    SentimentCategory,
+)
 
-logger = logging.getLogger('playground')
+logger = logging.getLogger("playground")
 
 
 class ModelManager:
@@ -35,10 +41,10 @@ class ModelManager:
                     # Initialize basic attributes
                     self.models = {}
                     self._model_locks = {
-                        'sentiment': threading.Lock(),
-                        'intent': threading.Lock(),
-                        'topic': threading.Lock(),
-                        'ner': threading.Lock()
+                        "sentiment": threading.Lock(),
+                        "intent": threading.Lock(),
+                        "topic": threading.Lock(),
+                        "ner": threading.Lock(),
                     }
 
                     # Start model loading in background
@@ -46,29 +52,29 @@ class ModelManager:
                     self._initialized = True
 
     def _initialize_models(self):
-        """Initialize all models in a thread-safe manner"""
+        """Initialize all models in a thread-safe manner.
+
+        Each model is loaded independently so a failure in one does not
+        prevent the others from loading.
+        """
+
         def load_models():
-            try:
-                with self._lock:
-                    if not self._models_initialized:
-                        # Load sentiment model
-                        self._load_sentiment_model()
+            with self._lock:
+                if not self._models_initialized:
+                    for loader in (
+                        self._load_sentiment_model,
+                        self._load_intent_model,
+                        self._load_topic_model,
+                        self._load_ner_model,
+                    ):
+                        try:
+                            loader()
+                        except Exception as e:
+                            logger.error(f"{loader.__name__} failed: {e}")
+                            logger.error(traceback.format_exc())
 
-                        # Load intent model
-                        self._load_intent_model()
-
-                        # Load topic model
-                        self._load_topic_model()
-
-                        # Load NER model
-                        self._load_ner_model()
-
-                        self._models_initialized = True
-                        cache.set('models_loaded', True, timeout=None)
-            except Exception as e:
-                logger.error(f"Error loading models: {e}")
-                logger.error(traceback.format_exc())
-                self._models_initialized = False
+                    self._models_initialized = True
+                    cache.set("models_loaded", True, timeout=None)
 
         # Start loading in background
         thread = threading.Thread(target=load_models)
@@ -78,14 +84,15 @@ class ModelManager:
     def _load_sentiment_model(self):
         """Load sentiment model with proper error handling"""
         from .sentiment_model_analysis import SentimentModelManager
+
         try:
-            with self._model_locks['sentiment']:
-                if 'sentiment' not in self.models:
+            with self._model_locks["sentiment"]:
+                if "sentiment" not in self.models:
                     logger.info("Loading sentiment model...")
-                    self.models['sentiment'] = SentimentModelManager(
-                        model_dir=settings.FINETUNED_MODELS['sentiment']['path']
+                    self.models["sentiment"] = SentimentModelManager(
+                        model_dir=settings.FINETUNED_MODELS["sentiment"]["path"]
                     )
-                    self.models['sentiment'].load_model()
+                    self.models["sentiment"].load_model()
                     logger.info("Sentiment model loaded successfully")
         except Exception as e:
             logger.error(f"Error loading sentiment model: {e}")
@@ -94,12 +101,13 @@ class ModelManager:
     def _load_intent_model(self):
         """Load intent model with proper error handling"""
         from .intent_recognitionwith_tr_bert import IntentModelTester
+
         try:
-            with self._model_locks['intent']:
-                if 'intent' not in self.models:
+            with self._model_locks["intent"]:
+                if "intent" not in self.models:
                     logger.info("Loading intent model...")
-                    self.models['intent'] = IntentModelTester(
-                        settings.FINETUNED_MODELS['intent']['path']
+                    self.models["intent"] = IntentModelTester(
+                        settings.FINETUNED_MODELS["intent"]["path"]
                     )
                     logger.info("Intent model loaded successfully")
         except Exception as e:
@@ -107,20 +115,40 @@ class ModelManager:
             raise
 
     def _load_topic_model(self):
-        """Load topic model with proper error handling"""
+        """Load topic model with proper error handling.
+
+        Applies a compatibility shim for BertSdpaSelfAttention which was
+        removed in transformers >=5.x but may be referenced by models that
+        were serialised with an older version.
+        """
+        # Compat shim: BertSdpaSelfAttention was merged into BertSelfAttention
+        # in transformers 5.x.  Models pickled with older transformers still
+        # reference the old class name, so we alias it back.
+        import transformers.models.bert.modeling_bert as _bert_module
+
+        if not hasattr(_bert_module, "BertSdpaSelfAttention"):
+            _bert_module.BertSdpaSelfAttention = _bert_module.BertSelfAttention
+
         from bertopic import BERTopic
         from sentence_transformers import SentenceTransformer
-        try:
-            with self._model_locks['topic']:
-                if 'topic' not in self.models:
-                    logger.info("Loading topic model...")
-                    bertopic_path = settings.FINETUNED_MODELS['topic']['bertopic_path']
-                    sentence_transformer_path = settings.FINETUNED_MODELS['topic']['transformer_path']
 
-                    if os.path.exists(bertopic_path) and os.path.exists(sentence_transformer_path):
-                        self.models['topic'] = {
-                            'bertopic': BERTopic.load(bertopic_path),
-                            'sentence_transformer': SentenceTransformer(sentence_transformer_path)
+        try:
+            with self._model_locks["topic"]:
+                if "topic" not in self.models:
+                    logger.info("Loading topic model...")
+                    bertopic_path = settings.FINETUNED_MODELS["topic"]["bertopic_path"]
+                    sentence_transformer_path = settings.FINETUNED_MODELS["topic"][
+                        "transformer_path"
+                    ]
+
+                    if os.path.exists(bertopic_path) and os.path.exists(
+                        sentence_transformer_path
+                    ):
+                        self.models["topic"] = {
+                            "bertopic": BERTopic.load(bertopic_path),
+                            "sentence_transformer": SentenceTransformer(
+                                sentence_transformer_path
+                            ),
                         }
                         logger.info("Topic model loaded successfully")
         except Exception as e:
@@ -131,18 +159,21 @@ class ModelManager:
         """Load NER model with proper error handling"""
         import torch
         from transformers import pipeline
+
         try:
-            with self._model_locks['ner']:
-                if 'ner' not in self.models:
+            with self._model_locks["ner"]:
+                if "ner" not in self.models:
                     logger.info("Loading NER model...")
                     device = torch.device(
-                        'cuda' if torch.cuda.is_available() else 'cpu')
-                    self.models['ner'] = pipeline(
-                        'ner',
-                        model=settings.FINETUNED_MODELS['ner']['path'],
+                        "cuda" if torch.cuda.is_available() else "cpu"
+                    )
+                    self.models["ner"] = pipeline(
+                        "ner",
+                        model=settings.FINETUNED_MODELS["ner"]["path"],
                         device=device,
-                        batch_size=settings.FINETUNED_MODELS.get(
-                            'ner', {}).get('batch_size', 32)
+                        batch_size=settings.FINETUNED_MODELS.get("ner", {}).get(
+                            "batch_size", 32
+                        ),
                     )
                     logger.info("NER model loaded successfully")
         except Exception as e:
@@ -155,7 +186,7 @@ class ModelManager:
             if model_type not in self._model_locks:
                 raise KeyError(f"Unknown model type: {model_type}")
 
-            timeout = getattr(settings, 'MODEL_LOAD_TIMEOUT', 60)
+            timeout = getattr(settings, "MODEL_LOAD_TIMEOUT", 60)
             start_time = time.time()
 
             while time.time() - start_time < timeout:
@@ -166,8 +197,7 @@ class ModelManager:
                 # If model is not loaded yet, wait a bit
                 time.sleep(0.1)
 
-            raise TimeoutError(
-                f"Model {model_type} not loaded within timeout period")
+            raise TimeoutError(f"Model {model_type} not loaded within timeout period")
 
         except Exception as e:
             logger.error(f"Error getting model {model_type}: {e}")
@@ -182,22 +212,22 @@ class EcommerceSentimentMapper:
 
         # Mapping dictionaries
         self.granular_mapping = {
-            'joy': ('Satisfaction', 'Positive'),
-            'love': ('Gratitude', 'Positive'),
-            'surprise': ('Appreciation', 'Positive'),
-            'sadness': ('Disappointment', 'Negative'),
-            'anger': ('Frustration', 'Negative'),
-            'fear': ('Urgency', 'Negative')
+            "joy": ("Satisfaction", "Positive"),
+            "love": ("Gratitude", "Positive"),
+            "surprise": ("Appreciation", "Positive"),
+            "sadness": ("Disappointment", "Negative"),
+            "anger": ("Frustration", "Negative"),
+            "fear": ("Urgency", "Negative"),
         }
 
     def map_sentiment(self, base_sentiment, confidence_score):
         """Map the base sentiment to e-commerce specific sentiment"""
         # Default to neutral if below threshold
         if confidence_score < self.threshold:
-            return 'neutral', 'neutral'
+            return "neutral", "neutral"
 
         # Get the mapped sentiments (granular and general)
-        return self.granular_mapping.get(base_sentiment, ('neutral', 'neutral'))
+        return self.granular_mapping.get(base_sentiment, ("neutral", "neutral"))
 
 
 class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
@@ -213,45 +243,45 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
         try:
             # Setup Redis cache for LLM
             redis_client = _redis.Redis.from_url(
-                url=settings.CACHES['default']['LOCATION'],
-                db=settings.CACHES['default']['OPTIONS'].get('db', 1),
-                decode_responses=True
+                url=settings.CACHES["default"]["LOCATION"],
+                db=settings.CACHES["default"]["OPTIONS"].get("db", 1),
+                decode_responses=True,
             )
             set_llm_cache(RedisCache(redis_client))
 
             # Initialize model manager
-            if not hasattr(self.__class__, 'model_manager'):
+            if not hasattr(self.__class__, "model_manager"):
                 self.__class__.model_manager = ModelManager()
 
             self.model_manager = self.__class__.model_manager
 
             # Initialize ChatGPT with proper cache settings
-            self.llm = ChatOpenAI(
-                model=settings.GPT_MINI,
-                temperature=0.1
-            )
+            self.llm = ChatOpenAI(model=settings.GPT_MINI, temperature=0.1)
 
             # Initialize other components
             await self.initialize_components()
 
             # Send ready message to client
-            await self.send(json.dumps({
-                'status': 'connected',
-                'message': 'WebSocket connected and initialized'
-            }))
+            await self.send(
+                json.dumps(
+                    {
+                        "status": "connected",
+                        "message": "WebSocket connected and initialized",
+                    }
+                )
+            )
 
         except Exception as e:
             logger.error(f"Error in connection: {e}")
             logger.error(traceback.format_exc())
-            await self.send(json.dumps({
-                'error': 'Failed to initialize connection'
-            }))
+            await self.send(json.dumps({"error": "Failed to initialize connection"}))
             await self.close()
 
     async def initialize_components(self):
         """Initialize non-model components"""
         from .text_classification_vector_store import PGVectorStoreTextClassification
         from .text_classification_rag_processor import RAGProcessorTextClassification
+
         try:
             # Load examples from database
             self.topic_examples = await self.load_topic_examples()
@@ -265,8 +295,7 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
             # Initialize vector store and RAG processor
             self.vector_store = PGVectorStoreTextClassification()
             self.rag_processor = RAGProcessorTextClassification(
-                self.vector_store,
-                self.llm
+                self.vector_store, self.llm
             )
 
             # Setup prompts
@@ -279,7 +308,7 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def get_sentiment_categories(self):
-        return list(SentimentCategory.objects.all().values_list('name', flat=True))
+        return list(SentimentCategory.objects.all().values_list("name", flat=True))
 
     @database_sync_to_async
     def get_topics(self):
@@ -303,10 +332,9 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
         )
 
         # Topic Classification Prompt
-        topic_example_prompt = ChatPromptTemplate.from_messages([
-            ("human", "{input}"),
-            ("assistant", "{output}")
-        ])
+        topic_example_prompt = ChatPromptTemplate.from_messages(
+            [("human", "{input}"), ("assistant", "{output}")]
+        )
 
         topic_few_shot_example_prompt = FewShotChatMessagePromptTemplate(
             example_prompt=topic_example_prompt,
@@ -315,62 +343,78 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
 
         self.topic_prompt = ChatPromptTemplate.from_messages(
             [
-                ('system',
-                 "You are a specialized topic classifier for an e-commerce customer support system. Topics are organized into categories: Product-Related, Order Management, Payment & Account, and Customer Experience. Analyze the following examples and then classify new text:"),
+                (
+                    "system",
+                    "You are a specialized topic classifier for an e-commerce customer support system. Topics are organized into categories: Product-Related, Order Management, Payment & Account, and Customer Experience. Analyze the following examples and then classify new text:",
+                ),
                 topic_few_shot_example_prompt,
-                ('human',
-                 "Given the above examples, classify this text into the most appropriate topic and explain why: {input}"),
+                (
+                    "human",
+                    "Given the above examples, classify this text into the most appropriate topic and explain why: {input}",
+                ),
             ]
         )
 
         # Intent Classification Prompt
-        intent_example_prompt = ChatPromptTemplate.from_messages([
-            ("human", "{input}"),
-            ("assistant", "{output}")
-        ])
+        intent_example_prompt = ChatPromptTemplate.from_messages(
+            [("human", "{input}"), ("assistant", "{output}")]
+        )
 
         intent_few_shot_example_prompt = FewShotChatMessagePromptTemplate(
             example_prompt=intent_example_prompt,
             examples=self.intent_examples,
         )
 
-        self.intent_prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are an intent recognition specialist for customer support. Your goal is to understand what the customer wants to achieve. Learn from these examples and then classify new text: "),
-            intent_few_shot_example_prompt,
-            ("human",
-             "Based on these examples, classify the intent of this text and explain your reasoning: {input}")
-        ])
+        self.intent_prompt = ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    "You are an intent recognition specialist for customer support. Your goal is to understand what the customer wants to achieve. Learn from these examples and then classify new text: ",
+                ),
+                intent_few_shot_example_prompt,
+                (
+                    "human",
+                    "Based on these examples, classify the intent of this text and explain your reasoning: {input}",
+                ),
+            ]
+        )
 
         # Sentiment Analysis Prompt with Granular Emotions
-        sentiment_example_prompt = ChatPromptTemplate.from_messages([
-            ("human", "{input}"),
-            ("assistant", "{output}")
-        ])
+        sentiment_example_prompt = ChatPromptTemplate.from_messages(
+            [("human", "{input}"), ("assistant", "{output}")]
+        )
 
         sentiment_few_shot_example_prompt = FewShotChatMessagePromptTemplate(
             example_prompt=sentiment_example_prompt,
             examples=self.sentiment_examples,
         )
 
-        self.sentiment_prompt = ChatPromptTemplate.from_messages([
-            ("system",
-             "You are a sentiment analysis expert for customer support interactions. You analyze both overall sentiment and specific emotional undertones. Learn from these examples and then analyze new text:"),
-            sentiment_few_shot_example_prompt,
-            ("human",
-             "Based on these examples, analyze the sentiment of this text. Provide: 1) The main sentiment (POSITIVE/NEGATIVE/NEUTRAL), 2) A granular emotion if applicable (Frustration, Satisfaction, etc.), and 3) A confidence score (0-1). If no clear sentiment is present, explicitly state NEUTRAL: {input}")
-        ])
+        self.sentiment_prompt = ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    "You are a sentiment analysis expert for customer support interactions. You analyze both overall sentiment and specific emotional undertones. Learn from these examples and then analyze new text:",
+                ),
+                sentiment_few_shot_example_prompt,
+                (
+                    "human",
+                    "Based on these examples, analyze the sentiment of this text. Provide: 1) The main sentiment (POSITIVE/NEGATIVE/NEUTRAL), 2) A granular emotion if applicable (Frustration, Satisfaction, etc.), and 3) A confidence score (0-1). If no clear sentiment is present, explicitly state NEUTRAL: {input}",
+                ),
+            ]
+        )
 
     @database_sync_to_async
     def load_topic_examples(self):
         """Load topic examples from database"""
         examples = []
-        topics = Topic.objects.filter(
-            is_active=True).order_by('-usage_count')[:5]
+        topics = Topic.objects.filter(is_active=True).order_by("-usage_count")[:5]
         for topic in topics:
-            examples.append({
-                "input": f"Category: {topic.get_category_display()}\nText:{topic.description}",
-                "output": f"This text belongs to the topic '{topic.name}' because it discusses {topic.description[:100]}..."
-            })
+            examples.append(
+                {
+                    "input": f"Category: {topic.get_category_display()}\nText:{topic.description}",
+                    "output": f"This text belongs to the topic '{topic.name}' because it discusses {topic.description[:100]}...",
+                }
+            )
         return examples
 
     @database_sync_to_async
@@ -379,105 +423,100 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
         examples = []
         intents = Intent.objects.all()
         for intent in intents:
-            examples.append({
-                "input": intent.description,
-                "output": f"The intent is '{intent.name}' because this text expresses {intent.description[:100]}..."
-            })
+            examples.append(
+                {
+                    "input": intent.description,
+                    "output": f"The intent is '{intent.name}' because this text expresses {intent.description[:100]}...",
+                }
+            )
         return examples
 
     @database_sync_to_async
     def load_sentiment_examples(self) -> List[Dict]:
         """Load sentiment examples from database with granular emotions"""
         examples = []
-        sentiments = (Sentiment.objects
-                      .filter(confidence__gte=0.8)
-                      .select_related('category', 'granular_emotion', 'message')[:5])
+        sentiments = Sentiment.objects.filter(confidence__gte=0.8).select_related(
+            "category", "granular_emotion", "message"
+        )[:5]
         for sentiment in sentiments:
             text = sentiment.message.content
-            emotion_text = {f"with {sentiment.granular_emotion.name}"
-                            if sentiment.granular_emotion else ""}
-            examples.append({
-                "input": text,
-                "output": f"The sentiment is {sentiment.category.name} {emotion_text} with a confidence of {sentiment.confidence:.2f} and intensity score of {sentiment.score:.2f}."
-            })
+            emotion_text = {
+                (
+                    f"with {sentiment.granular_emotion.name}"
+                    if sentiment.granular_emotion
+                    else ""
+                )
+            }
+            examples.append(
+                {
+                    "input": text,
+                    "output": f"The sentiment is {sentiment.category.name} {emotion_text} with a confidence of {sentiment.confidence:.2f} and intensity score of {sentiment.score:.2f}.",
+                }
+            )
         return examples
 
     async def receive(self, text_data):
         """Handle incoming WebSocket messages"""
         try:
             data = json.loads(text_data)
-            task = data.get('task')
-            text = data.get('text')
+            task = data.get("task")
+            text = data.get("text")
             # default to few_shot_learning
-            method = data.get('method', 'few_shot_learning')
+            method = data.get("method", "few_shot_learning")
 
             if not text:
-                await self.send(json.dumps({
-                    'error': 'No text provided'
-                }))
+                await self.send(json.dumps({"error": "No text provided"}))
                 return
 
-            if method == 'finetuned':
+            if method == "finetuned":
                 # Process based on selected task
-                if task == 'sentiment':
+                if task == "sentiment":
                     result = await self.analyze_finetuned_sentiment(text)
-                elif task == 'intent':
+                elif task == "intent":
                     result = await self.analyze_finetuned_intent(text)
-                elif task == 'topic':
+                elif task == "topic":
                     result = await self.analyze_finetuned_topic(text)
-                elif task == 'ner':  # Add NER task
+                elif task == "ner":  # Add NER task
                     result = await self.analyze_finetuned_ner(text)
                 else:
-                    await self.send(json.dumps({
-                        'error': 'Invalid task specified'
-                    }))
+                    await self.send(json.dumps({"error": "Invalid task specified"}))
                     return
 
-            elif method == 'few_shot_learning':
+            elif method == "few_shot_learning":
                 # Process based on selected task
-                if task == 'sentiment':
+                if task == "sentiment":
                     result = await self.analyze_sentiment(text)
-                elif task == 'intent':
+                elif task == "intent":
                     result = await self.analyze_intent(text)
-                elif task == 'topic':
+                elif task == "topic":
                     result = await self.analyze_topic(text)
                 else:
-                    await self.send(json.dumps({
-                        'error': 'Invalid task specified'
-                    }))
+                    await self.send(json.dumps({"error": "Invalid task specified"}))
                     return
 
-            elif method == 'rag':
+            elif method == "rag":
                 # Map task to rag task types
-                task_map = {
-                    'sentiment': 'SE',
-                    'intent': 'IN',
-                    'topic': 'TO'
-                }
+                task_map = {"sentiment": "SE", "intent": "IN", "topic": "TO"}
                 rag_task = task_map[task]
 
                 # Process using RAG
                 result = await self.rag_processor.process(text, rag_task)
 
-            await self.send(json.dumps({
-                'result': result
-            }))
+            await self.send(json.dumps({"result": result}))
 
         except Exception as e:
             logger.error(f"Error processing request: {e}")
-            await self.send(json.dumps({
-                'error': f'An error occurred: {str(e)}'
-            }))
+            await self.send(json.dumps({"error": f"An error occurred: {str(e)}"}))
 
     async def analyze_finetuned_sentiment(self, text):
         """Analyze sentiment with proper error handling and state management"""
         try:
-            sentiment_model = self.model_manager.get_model('sentiment')
+            sentiment_model = self.model_manager.get_model("sentiment")
             prediction_results = sentiment_model.predict(text)
 
             # Extract results
-            base_sentiment = prediction_results['predictions'][0]
-            confidence_score = prediction_results['confidence'][0]
+            base_sentiment = prediction_results["predictions"][0]
+            confidence_score = prediction_results["confidence"][0]
 
             # Map sentiment
             mapper = EcommerceSentimentMapper()
@@ -494,9 +533,9 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
             )
 
             return {
-                'label': granular_sentiment,
-                'score': str(confidence_score),
-                'explanation': explanation
+                "label": granular_sentiment,
+                "score": str(confidence_score),
+                "explanation": explanation,
             }
 
         except Exception as e:
@@ -507,19 +546,19 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
     async def analyze_finetuned_intent(self, text):
         """Analyze intent with proper error handling and state management"""
         try:
-            intent_model = self.model_manager.get_model('intent')
+            intent_model = self.model_manager.get_model("intent")
             prediction = intent_model.predict(text)
 
             return {
-                'label': prediction['intent'],
-                'score': prediction['intent_confidence'],
-                'explanation': (
+                "label": prediction["intent"],
+                "score": prediction["intent_confidence"],
+                "explanation": (
                     f"Intent Category: {prediction['category']}\n"
                     f"Intent Sub-Category: {prediction['intent']}\n"
                     f"Category Confidence: {prediction['category_confidence']}\n"
                     f"Intent Confidence: {prediction['intent_confidence']}"
                 ),
-                'category': prediction['category']
+                "category": prediction["category"],
             }
         except Exception as e:
             logger.error(f"Error in intent analysis: {e}")
@@ -531,17 +570,13 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
         try:
             # Ensure text is a list for BERTopic and handle empty inputs
             if not text:
-                return {
-                    "label": ["No text provided"],
-                    "score": 0.0
-                }
+                return {"label": ["No text provided"], "score": 0.0}
 
             if isinstance(text, str):
                 text = [text]
 
             # Get topic prediction and probability
-            bertopic_model = self.model_manager.get_model('topic')[
-                'bertopic']
+            bertopic_model = self.model_manager.get_model("topic")["bertopic"]
             topics, probs = bertopic_model.transform(text)
             # Get first topic since we only passed one text
             topic_id = topics[0]
@@ -549,8 +584,9 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
 
             # Get topic information
             if topic_id != -1:  # -1 indicates no topic assigned
-                topic_words = [word for word,
-                               _ in bertopic_model.get_topic(topic_id)][:10]
+                topic_words = [word for word, _ in bertopic_model.get_topic(topic_id)][
+                    :10
+                ]
                 topic_repr = bertopic_model.get_representative_docs(topic_id)
             else:
                 topic_words = ["No specific topic identified"]
@@ -558,13 +594,17 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
 
             return {
                 "label": topic_words,
-                "score": float(probability) if isinstance(probability, (float, int)) else float(probability.max()),
+                "score": (
+                    float(probability)
+                    if isinstance(probability, (float, int))
+                    else float(probability.max())
+                ),
                 "explanation": (
                     f"Topic ID: {topic_id}\n"
                     f"Confidence: {float(probability) if isinstance(probability, (float, int)) else float(probability.max()):.2f}\n"
-                    f"Representative documents:\n" +
-                    "\n".join(f"- {doc}..." for doc in topic_repr)
-                )
+                    f"Representative documents:\n"
+                    + "\n".join(f"- {doc}..." for doc in topic_repr)
+                ),
             }
         except Exception as e:
             logger.error(f"Error in topic analysis: {e}")
@@ -572,12 +612,12 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
             return {
                 "label": ["Error analyzing topic"],
                 "score": 0.0,
-                "explanation": f"An error occurred: {str(e)}"
+                "explanation": f"An error occurred: {str(e)}",
             }
 
     @database_sync_to_async
     def get_granular_emotions(self):
-        return list(GranularEmotion.objects.all().values_list('name', flat=True))
+        return list(GranularEmotion.objects.all().values_list("name", flat=True))
 
     async def analyze_sentiment(self, text: str) -> Dict:
         """Analyze sentiment using ChatGPT with few-shot learning"""
@@ -588,32 +628,31 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
 
         # Parse the structured response
         result = {
-            'label': 'NEUTRAL',  # Default
-            'score': 0.5,
-            'explanation': response.content,
-            'granular_emotion': None
+            "label": "NEUTRAL",  # Default
+            "score": 0.5,
+            "explanation": response.content,
+            "granular_emotion": None,
         }
 
         # Extract main sentiment
         if "POSITIVE" in content:
-            result['label'] = "POSITIVE"
-            result['score'] = 0.9
+            result["label"] = "POSITIVE"
+            result["score"] = 0.9
         elif "NEGATIVE" in content:
-            result['label'] = "NEGATIVE"
-            result['score'] = 0.9
+            result["label"] = "NEGATIVE"
+            result["score"] = 0.9
         elif "NEUTRAL" in content:
-            result['label'] = "NEUTRAL"
-            result['score'] = 0.7
+            result["label"] = "NEUTRAL"
+            result["score"] = 0.7
         else:
             # If no clear sentiment is found, keep default NEUTRAL with lower confidence
-            result['score'] = 0.5
+            result["score"] = 0.5
 
         # Extract confidence score if present
-        confidence_matches = re.findall(
-            r'CONFIDENCE[:\s]+(\d*\.?\d+)', content)
+        confidence_matches = re.findall(r"CONFIDENCE[:\s]+(\d*\.?\d+)", content)
         if confidence_matches:
             try:
-                result['score'] = float(confidence_matches[0])
+                result["score"] = float(confidence_matches[0])
             except ValueError:
                 pass  # Keep default score if conversion fails
 
@@ -621,7 +660,7 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
         granular_emotions = await self.get_granular_emotions()
         for emotion in granular_emotions:
             if emotion.upper() in content:
-                result['granular_emotion'] = emotion[0]
+                result["granular_emotion"] = emotion[0]
                 break
 
         return result
@@ -635,16 +674,18 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
         # Extract intent from response
         content = response.content.strip()
         result = {
-            'label': content.split("'")[1] if "'" in content else content,
-            'score': 0.9 if "'" in content else 0.7,
-            'explanation': response.content
+            "label": content.split("'")[1] if "'" in content else content,
+            "score": 0.9 if "'" in content else 0.7,
+            "explanation": response.content,
         }
 
         # Verify against known intents
         intents = await self.get_intents()
         intent_names = [intent.name for intent in intents]
-        if not any(intent.lower() in result['label'].lower() for intent in intent_names):
-            result['score'] = 0.6  # Lower confidence for novel classification
+        if not any(
+            intent.lower() in result["label"].lower() for intent in intent_names
+        ):
+            result["score"] = 0.6  # Lower confidence for novel classification
 
         return result
 
@@ -656,23 +697,23 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
 
         content = response.content.strip()
         result = {
-            'label': content.split("'")[1] if "'" in content else content,
-            'score': 0.9 if "'" in content else 0.7,
-            'explanation': response.content,
-            'category': None
+            "label": content.split("'")[1] if "'" in content else content,
+            "score": 0.9 if "'" in content else 0.7,
+            "explanation": response.content,
+            "category": None,
         }
 
         # Extract category if mentioned
         for category in Topic.Category.choices:
             if category[1].upper() in content.upper():
-                result['category'] = category[0]
+                result["category"] = category[0]
 
         return result
 
     async def analyze_finetuned_ner(self, text):
         """Analyze named entities with proper error handling and state management"""
         try:
-            ner_model = self.model_manager.get_model('ner')
+            ner_model = self.model_manager.get_model("ner")
 
             # Process text in batches if it's too long
             max_length = 512  # Maximum sequence length for BERT
@@ -680,7 +721,7 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
             processed_entities = []
 
             for i in range(0, len(words), max_length):
-                batch_text = " ".join(words[i:i + max_length])
+                batch_text = " ".join(words[i : i + max_length])
                 predictions = ner_model(batch_text)
 
                 # Process and merge consecutive entity tokens
@@ -688,17 +729,20 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
 
                 for pred in predictions:
                     # Clean the word (remove special tokens)
-                    clean_word = pred['word'].replace('##', '')
-                    entity_type = pred['entity'].split(
-                        '-')[-1]  # Remove B-/I- prefixes
+                    clean_word = pred["word"].replace("##", "")
+                    entity_type = pred["entity"].split("-")[-1]  # Remove B-/I- prefixes
 
-                    if current_entity and current_entity['entity'] == entity_type and \
-                       pred['start'] - current_entity['end'] <= 1:
+                    if (
+                        current_entity
+                        and current_entity["entity"] == entity_type
+                        and pred["start"] - current_entity["end"] <= 1
+                    ):
                         # Merge with current entity
-                        current_entity['word'] += clean_word
-                        current_entity['end'] = pred['end']
-                        current_entity['score'] = (
-                            current_entity['score'] + float(pred['score'])) / 2
+                        current_entity["word"] += clean_word
+                        current_entity["end"] = pred["end"]
+                        current_entity["score"] = (
+                            current_entity["score"] + float(pred["score"])
+                        ) / 2
                     else:
                         # Save current entity if exists
                         if current_entity:
@@ -706,11 +750,11 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
 
                         # Start new entity
                         current_entity = {
-                            'entity': entity_type,
-                            'word': clean_word,
-                            'score': float(pred['score']),
-                            'start': pred['start'],
-                            'end': pred['end']
+                            "entity": entity_type,
+                            "word": clean_word,
+                            "score": float(pred["score"]),
+                            "start": pred["start"],
+                            "end": pred["end"],
                         }
 
                 # Add last entity if exists
@@ -719,19 +763,19 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
 
             # Group entities by type with descriptions
             entity_descriptions = {
-                'PER': 'Person',
-                'ORG': 'Organization',
-                'LOC': 'Location',
-                'MISC': 'Miscellaneous',
-                'DATE': 'Date',
-                'TIME': 'Time',
-                'MONEY': 'Money',
-                'PERCENT': 'Percentage'
+                "PER": "Person",
+                "ORG": "Organization",
+                "LOC": "Location",
+                "MISC": "Miscellaneous",
+                "DATE": "Date",
+                "TIME": "Time",
+                "MONEY": "Money",
+                "PERCENT": "Percentage",
             }
 
             entities_by_type = {}
             for entity in processed_entities:
-                entity_type = entity['entity']
+                entity_type = entity["entity"]
                 type_name = entity_descriptions.get(entity_type, entity_type)
 
                 if type_name not in entities_by_type:
@@ -743,29 +787,33 @@ class NLPPlaygroundConsumer(AsyncWebsocketConsumer):
             for type_name, entities in entities_by_type.items():
                 explanation += f"\n{type_name}:\n"
                 for entity in entities:
-                    confidence = entity['score'] * 100
-                    explanation += f"- {entity['word']} (Confidence: {confidence:.1f}%)\n"
-                    if type_name == 'Person':
+                    confidence = entity["score"] * 100
+                    explanation += (
+                        f"- {entity['word']} (Confidence: {confidence:.1f}%)\n"
+                    )
+                    if type_name == "Person":
                         explanation += "  Role/Context: Mentioned in text\n"
-                    elif type_name == 'Organization':
+                    elif type_name == "Organization":
                         explanation += "  Type: Company/Institution\n"
 
             # Format for frontend display
             return {
-                'entities': processed_entities,
-                'entities_by_type': entities_by_type,
-                'explanation': explanation,
-                'original_text': text,
-                'entities_with_positions': [
+                "entities": processed_entities,
+                "entities_by_type": entities_by_type,
+                "explanation": explanation,
+                "original_text": text,
+                "entities_with_positions": [
                     {
-                        'text': entity['word'],
-                        'type': entity_descriptions.get(entity['entity'], entity['entity']),
-                        'start': entity['start'],
-                        'end': entity['end'],
-                        'confidence': entity['score']
+                        "text": entity["word"],
+                        "type": entity_descriptions.get(
+                            entity["entity"], entity["entity"]
+                        ),
+                        "start": entity["start"],
+                        "end": entity["end"],
+                        "confidence": entity["score"],
                     }
                     for entity in processed_entities
-                ]
+                ],
             }
 
         except Exception as e:
