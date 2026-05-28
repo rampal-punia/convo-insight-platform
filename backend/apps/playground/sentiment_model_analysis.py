@@ -3,6 +3,15 @@ import json
 import re
 from typing import Dict, List, Union
 from pathlib import Path
+import numpy as np
+import pandas as pd
+import emoji
+import contractions
+import torch
+from torch.utils.data import DataLoader
+
+# import dataloader
+
 
 logger = logging.getLogger(__name__)
 
@@ -16,24 +25,28 @@ def _get_torch():
     global _torch
     if _torch is None:
         import torch
+
         _torch = torch
     return _torch
 
 
 def _get_spacy_nlp():
     import spacy
-    return spacy.load('en_core_web_sm')
+
+    return spacy.load("en_core_web_sm")
 
 
 def _ensure_nltk_data():
     import nltk
+
     try:
-        nltk.data.find('tokenizers/punkt')
+        nltk.data.find("tokenizers/punkt")
     except LookupError:
-        nltk.download('punkt')
-        nltk.download('stopwords')
-        nltk.download('wordnet')
-        nltk.download('punkt_tab')
+        nltk.download("punkt")
+        nltk.download("stopwords")
+        nltk.download("wordnet")
+        nltk.download("punkt_tab")
+
 
 """
 6 Granular_Sentiment in the dataset are:
@@ -52,8 +65,9 @@ class SentimentPreprocessor:
         _ensure_nltk_data()
         from nltk.stem import WordNetLemmatizer
         from transformers import AutoTokenizer
+
         self.lemmatizer = WordNetLemmatizer()
-        self.tokenizer = AutoTokenizer.from_pretrained('roberta-base')
+        self.tokenizer = AutoTokenizer.from_pretrained("roberta-base")
 
     def clean_text(self, text):
         """Enhanced text cleaning"""
@@ -67,19 +81,20 @@ class SentimentPreprocessor:
         text = contractions.fix(text)
 
         # Handle special characters while keeping emoticons
-        text = re.sub(r'[^\w\s:;)(><\/\\]', ' ', text)
+        text = re.sub(r"[^\w\s:;)(><\/\\]", " ", text)
 
         # Handle repeated characters (e.g., 'happppy' -> 'happy')
-        text = re.sub(r'(.)\1+', r'\1\1', text)
+        text = re.sub(r"(.)\1+", r"\1\1", text)
 
         # Handle spacing
-        text = re.sub(r'\s+', ' ', text).strip()
+        text = re.sub(r"\s+", " ", text).strip()
 
         return text
 
     def preprocess_text(self, text):
         """Complete preprocessing pipeline"""
         from nltk.tokenize import word_tokenize
+
         _ensure_nltk_data()
         # Clean text
         text = self.clean_text(text)
@@ -110,15 +125,15 @@ class SentimentDataset:
             text,
             add_special_tokens=True,
             max_length=self.max_length,
-            padding='max_length',
+            padding="max_length",
             truncation=True,
-            return_tensors='pt'
+            return_tensors="pt",
         )
 
         return {
-            'input_ids': encoding['input_ids'].flatten(),
-            'attention_mask': encoding['attention_mask'].flatten(),
-            'labels': torch.tensor(self.labels[idx], dtype=torch.long)
+            "input_ids": encoding["input_ids"].flatten(),
+            "attention_mask": encoding["attention_mask"].flatten(),
+            "labels": torch.tensor(self.labels[idx], dtype=torch.long),
         }
 
 
@@ -130,15 +145,12 @@ def _make_sentiment_classifier(n_classes):
     class SentimentClassifier(nn.Module):
         def __init__(self, n_classes):
             super().__init__()
-            self.roberta = AutoModel.from_pretrained('roberta-base')
+            self.roberta = AutoModel.from_pretrained("roberta-base")
             self.drop = nn.Dropout(p=0.3)
             self.fc = nn.Linear(self.roberta.config.hidden_size, n_classes)
 
         def forward(self, input_ids, attention_mask):
-            outputs = self.roberta(
-                input_ids=input_ids,
-                attention_mask=attention_mask
-            )
+            outputs = self.roberta(input_ids=input_ids, attention_mask=attention_mask)
             pooled_output = outputs.last_hidden_state[:, 0, :]
             output = self.drop(pooled_output)
             return self.fc(output)
@@ -152,9 +164,10 @@ def train_model(model, train_loader, val_loader, device, epochs=5):
     from tqdm import tqdm
     from torch import nn
     from sklearn.metrics import classification_report
+
     optimizer = torch.optim.AdamW(model.parameters(), lr=2e-5)
     criterion = nn.CrossEntropyLoss()
-    best_val_loss = float('inf')
+    best_val_loss = float("inf")
     best_model_state = None
     training_info = {}
 
@@ -162,10 +175,10 @@ def train_model(model, train_loader, val_loader, device, epochs=5):
         model.train()
         total_loss = 0
 
-        for batch in tqdm(train_loader, desc=f'Epoch {epoch + 1}/{epochs}'):
-            input_ids = batch['input_ids'].to(device)
-            attention_mask = batch['attention_mask'].to(device)
-            labels = batch['labels'].to(device)
+        for batch in tqdm(train_loader, desc=f"Epoch {epoch + 1}/{epochs}"):
+            input_ids = batch["input_ids"].to(device)
+            attention_mask = batch["attention_mask"].to(device)
+            labels = batch["labels"].to(device)
 
             outputs = model(input_ids, attention_mask)
             loss = criterion(outputs, labels)
@@ -184,9 +197,9 @@ def train_model(model, train_loader, val_loader, device, epochs=5):
 
         with torch.no_grad():
             for batch in val_loader:
-                input_ids = batch['input_ids'].to(device)
-                attention_mask = batch['attention_mask'].to(device)
-                labels = batch['labels'].to(device)
+                input_ids = batch["input_ids"].to(device)
+                attention_mask = batch["attention_mask"].to(device)
+                labels = batch["labels"].to(device)
 
                 outputs = model(input_ids, attention_mask)
                 loss = criterion(outputs, labels)
@@ -200,16 +213,16 @@ def train_model(model, train_loader, val_loader, device, epochs=5):
             best_val_loss = val_loss
             best_model_state = model.state_dict().copy()
 
-        training_info[f'epoch_{epoch+1}'] = {
-            'train_loss': total_loss / len(train_loader),
-            'val_loss': val_loss / len(val_loader),
-            'classification_report': classification_report(true_labels, predictions)
+        training_info[f"epoch_{epoch+1}"] = {
+            "train_loss": total_loss / len(train_loader),
+            "val_loss": val_loss / len(val_loader),
+            "classification_report": classification_report(true_labels, predictions),
         }
 
-        logger.info(f'Epoch {epoch + 1}:')
-        logger.info(f'Average training loss: {total_loss / len(train_loader)}')
-        logger.info(f'Validation loss: {val_loss / len(val_loader)}')
-        logger.info('\nClassification Report:')
+        logger.info(f"Epoch {epoch + 1}:")
+        logger.info(f"Average training loss: {total_loss / len(train_loader)}")
+        logger.info(f"Validation loss: {val_loss / len(val_loader)}")
+        logger.info("\nClassification Report:")
         logger.info(classification_report(true_labels, predictions))
 
     # Restore best model state
@@ -219,10 +232,13 @@ def train_model(model, train_loader, val_loader, device, epochs=5):
     return model, training_info
 
 
-def save_trained_model(model, tokenizer, label_encoder, training_info, save_dir="sentiment_model"):
+def save_trained_model(
+    model, tokenizer, label_encoder, training_info, save_dir="sentiment_model"
+):
     """Function to save all model components"""
     import torch
     import pandas as pd
+
     save_dir = Path(save_dir)
     save_dir.mkdir(exist_ok=True)
 
@@ -233,8 +249,7 @@ def save_trained_model(model, tokenizer, label_encoder, training_info, save_dir=
     tokenizer.save_pretrained(save_dir / "tokenizer")
 
     # Save label encoder classes
-    pd.Series(label_encoder.classes_).to_json(
-        save_dir / "label_encoder_classes.json")
+    pd.Series(label_encoder.classes_).to_json(save_dir / "label_encoder_classes.json")
 
     # Save config and training info
     config = {
@@ -242,7 +257,7 @@ def save_trained_model(model, tokenizer, label_encoder, training_info, save_dir=
         "max_length": 128,
         "num_classes": len(label_encoder.classes_),
         "version": "1.0",
-        "training_info": training_info
+        "training_info": training_info,
     }
 
     with open(save_dir / "config.json", "w") as f:
@@ -258,47 +273,45 @@ def main():
     from torch.utils.data import DataLoader
     from sklearn.model_selection import train_test_split
     from sklearn.preprocessing import LabelEncoder
+
     # Load and preprocess data
-    df = pd.read_csv('sentimentanalysismulticlass.csv')
+    df = pd.read_csv("sentimentanalysismulticlass.csv")
     preprocessor = SentimentPreprocessor()
 
     # Preprocess texts
-    df['processed_text'] = df['Text'].apply(preprocessor.preprocess_text)
+    df["processed_text"] = df["Text"].apply(preprocessor.preprocess_text)
 
     # Prepare labels
     label_encoder = LabelEncoder()
-    labels = label_encoder.fit_transform(df['Granular_Sentiment'])
+    labels = label_encoder.fit_transform(df["Granular_Sentiment"])
 
     # Split data
     train_texts, val_texts, train_labels, val_labels = train_test_split(
-        df['Text'].values, labels, test_size=0.2, random_state=42
+        df["Text"].values, labels, test_size=0.2, random_state=42
     )
 
     # Create datasets
-    train_dataset = SentimentDataset(
-        train_texts, train_labels, preprocessor.tokenizer)
-    val_dataset = SentimentDataset(
-        val_texts, val_labels, preprocessor.tokenizer)
+    train_dataset = SentimentDataset(train_texts, train_labels, preprocessor.tokenizer)
+    val_dataset = SentimentDataset(val_texts, val_labels, preprocessor.tokenizer)
 
     # Create dataloaders
     train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=16)
 
     # Initialize model
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = _make_sentiment_classifier(len(label_encoder.classes_))
     model.to(device)
 
     # Train model
-    trained_model, training_info = train_model(
-        model, train_loader, val_loader, device)
+    trained_model, training_info = train_model(model, train_loader, val_loader, device)
 
     # Save model and components
     save_trained_model(
         model=trained_model,
         tokenizer=preprocessor.tokenizer,
         label_encoder=label_encoder,
-        training_info=training_info
+        training_info=training_info,
     )
 
     logger.info("Training completed and model saved successfully!")
@@ -324,16 +337,17 @@ class SentimentModelManager:
         """Save all model components and configuration."""
         import torch
         import pandas as pd
+
         # Save model state
-        torch.save(model.state_dict(),
-                   self.model_dir / "sentiment_model_6cls.pt")
+        torch.save(model.state_dict(), self.model_dir / "sentiment_model_6cls.pt")
 
         # Save tokenizer
         tokenizer.save_pretrained(self.model_dir / "tokenizer")
 
         # Save label encoder
         pd.Series(label_encoder.classes_).to_json(
-            self.model_dir / "label_encoder_classes.json")
+            self.model_dir / "label_encoder_classes.json"
+        )
 
         # Save config
         if config is None:
@@ -341,7 +355,7 @@ class SentimentModelManager:
                 "model_type": "roberta-base",
                 "max_length": 128,
                 "num_classes": len(label_encoder.classes_),
-                "version": "1.0"
+                "version": "1.0",
             }
 
         with open(self.model_dir / "config.json", "w") as f:
@@ -357,18 +371,17 @@ class SentimentModelManager:
         from torch.utils.data import DataLoader
         from sklearn.preprocessing import LabelEncoder
         from transformers import AutoTokenizer
+
         # Load config
         with open(self.model_dir / "config.json", "r") as f:
             self.config = json.load(f)
 
         # Load tokenizer
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            self.model_dir / "tokenizer")
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_dir / "tokenizer")
 
         # Load label encoder
         classes = pd.read_json(
-            self.model_dir / "label_encoder_classes.json",
-            typ="series"
+            self.model_dir / "label_encoder_classes.json", typ="series"
         ).values
         self.label_encoder = LabelEncoder()
         self.label_encoder.classes_ = classes
@@ -376,16 +389,18 @@ class SentimentModelManager:
         # Initialize and load model
         self.model = _make_sentiment_classifier(self.config["num_classes"])
         self.model.load_state_dict(
-            torch.load(self.model_dir / "sentiment_model_25Nov24.pt",
-                       map_location=torch.device('cpu'))
+            torch.load(
+                self.model_dir / "sentiment_model_6cls.pt",
+                map_location=torch.device("cpu"),
+            )
         )
         self.model.eval()
 
         logger.info("Model and components loaded successfully")
 
-    def predict(self,
-                texts: Union[str, List[str]],
-                batch_size: int = 16) -> Dict[str, np.ndarray]:
+    def predict(
+        self, texts: Union[str, List[str]], batch_size: int = 16
+    ) -> Dict[str, np.ndarray]:
         """
         Run predictions on a single text or list of texts.
 
@@ -404,7 +419,7 @@ class SentimentModelManager:
             texts=texts,
             labels=[0] * len(texts),  # Dummy labels
             tokenizer=self.tokenizer,
-            max_length=self.config["max_length"]
+            max_length=self.config["max_length"],
         )
 
         # Create dataloader
@@ -417,8 +432,8 @@ class SentimentModelManager:
         self.model.eval()
         with torch.no_grad():
             for batch in dataloader:
-                input_ids = batch['input_ids']
-                attention_mask = batch['attention_mask']
+                input_ids = batch["input_ids"]
+                attention_mask = batch["attention_mask"]
 
                 outputs = self.model(input_ids, attention_mask)
                 probs = torch.softmax(outputs, dim=1)
@@ -432,20 +447,22 @@ class SentimentModelManager:
         predicted_labels = self.label_encoder.inverse_transform(predictions)
 
         return {
-            'texts': texts,
-            'predictions': predicted_labels,
-            'confidence': np.array(confidence_scores),
-            'prediction_ids': np.array(predictions)
+            "texts": texts,
+            "predictions": predicted_labels,
+            "confidence": np.array(confidence_scores),
+            "prediction_ids": np.array(predictions),
         }
 
 
 def format_predictions(prediction_results: Dict) -> pd.DataFrame:
     """Format prediction results into a readable DataFrame."""
-    return pd.DataFrame({
-        'text': prediction_results['texts'],
-        'predicted_sentiment': prediction_results['predictions'],
-        'confidence': prediction_results['confidence'].round(3)
-    })
+    return pd.DataFrame(
+        {
+            "text": prediction_results["texts"],
+            "predicted_sentiment": prediction_results["predictions"],
+            "confidence": prediction_results["confidence"].round(3),
+        }
+    )
 
 
 # Example usage
@@ -477,7 +494,7 @@ if __name__ == "__main__":
         "This makes me so angry and frustrated.",
         "I'm worried about the upcoming exam.",
         "The sunset was absolutely beautiful.",
-        "I'm feeling quite sad and lonely."
+        "I'm feeling quite sad and lonely.",
     ]
 
     # Run predictions
