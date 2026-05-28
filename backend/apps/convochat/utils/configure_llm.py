@@ -1,11 +1,12 @@
 from django.conf import settings
-import aiohttp
+import asyncio
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_core.runnables import RunnablePassthrough
 from langchain_community.chat_message_histories import RedisChatMessageHistory
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_huggingface import HuggingFaceEndpoint
 from langchain_core.output_parsers import StrOutputParser
+from huggingface_hub import InferenceClient
 
 from langchain_openai import ChatOpenAI
 from typing import Literal, Optional, Union
