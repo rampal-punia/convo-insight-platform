@@ -16,7 +16,7 @@ import soundfile as sf
 
 logger = logging.getLogger('general_assistant')
 
-API_URL = "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-large"
+API_URL = "https://router.huggingface.co/v1/models/Salesforce/blip-image-captioning-large"
 headers = {"Authorization": f"Bearer {settings.HUGGINGFACEHUB_API_TOKEN}"}
 
 
@@ -108,13 +108,22 @@ class ImageModalHandler:
         return img_resized, image_description
 
     async def query_image_model(self, image_bytes):
-        response = await asyncio.to_thread(
-            requests.post,
-            API_URL,
-            headers=headers,
-            data=image_bytes
-        )
-        return response.json()[0]['generated_text']
+        try:
+            response = await asyncio.to_thread(
+                requests.post,
+                API_URL,
+                headers=headers,
+                data=image_bytes,
+                timeout=30,
+            )
+            response.raise_for_status()
+            return response.json()[0]['generated_text']
+        except (requests.ConnectionError, requests.Timeout) as exc:
+            logger.warning("Image captioning API unavailable: %s", exc)
+            return "Image uploaded successfully, but the image description service is currently unavailable."
+        except Exception as exc:
+            logger.error("Unexpected error querying image model: %s", exc_info=True)
+            return "Image uploaded successfully, but the image description service is currently unavailable."
 
     @staticmethod
     def update_image_message(image_message, image_array, image_description):
