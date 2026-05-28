@@ -3,6 +3,15 @@
 Welcome to ConvoInsight! This guide will get you from zero to shipping code in 4 weeks.
 Read it in order. Ask questions whenever something doesn't make sense — that's how you learn.
 
+### Deep-dive Reference Docs
+
+Once you've got the stack running and understand the basics, use these comprehensive guides:
+
+| Guide | What's Inside |
+|-------|--------------|
+| [Backend Guide](../backend/docs/BACKEND_GUIDE.md) | Architecture, DB schemas (Mermaid ERD), all 21 API endpoints, LLM/ML models, LangGraph agent, Celery, WebSockets |
+| [Frontend Guide](../frontend/docs/FRONTEND_GUIDE.md) | Project structure, API client reference, auth flow, page templates, testing, WebSocket chat pattern |
+
 ---
 
 ## Day 1: Get It Running
