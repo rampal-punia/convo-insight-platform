@@ -1,4 +1,4 @@
-import aiohttp
+import asyncio
 import json
 import logging
 from django.conf import settings
@@ -6,13 +6,14 @@ from langchain_core.messages import HumanMessage, AIMessage
 from channels.db import database_sync_to_async
 from convochat.models import Conversation, Message, AIText
 from apps.convochat.utils import configure_llm
+from huggingface_hub import InferenceClient
 
 logger = logging.getLogger('convochat')
 
-
-# Title generation API
-API_URL = "https://router.huggingface.co/hf-inference/models/czearing/article-title-generator"
-headers = {"Authorization": f"Bearer {settings.HUGGINGFACEHUB_API_TOKEN}"}
+_title_client = InferenceClient(
+    model='czearing/article-title-generator',
+    token=settings.HUGGINGFACEHUB_API_TOKEN,
+)
 
 
 @database_sync_to_async
@@ -51,19 +52,16 @@ def save_aitext(message, input_data):
 
 
 async def generate_title(conversation_content):
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-                API_URL,
-                headers=headers,
-                json={
-                    "inputs": conversation_content,
-                    "parameters": {"max_length": 50, "min_length": 10}
-                }) as response:
-            result = await response.json()
-            if isinstance(result, list) and len(result) > 0:
-                return result[0]['generated_text']
-            else:
-                return "Untitled Conversation"
+    try:
+        result = await asyncio.to_thread(
+            _title_client.text_generation,
+            conversation_content,
+            max_new_tokens=50,
+        )
+        return result.strip() if result else 'Untitled Conversation'
+    except Exception as exc:
+        logger.warning('Title generation failed: %s', exc)
+        return 'Untitled Conversation'
 
 
 class TextChatHandler:
