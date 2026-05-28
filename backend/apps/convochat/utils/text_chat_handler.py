@@ -10,11 +10,8 @@ from apps.convochat.utils import configure_llm
 logger = logging.getLogger('convochat')
 
 
-# Summary generation API
-# API_URL = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
-
 # Title generation API
-API_URL = "https://api-inference.huggingface.co/models/czearing/article-title-generator"
+API_URL = "https://router.huggingface.co/v1/models/czearing/article-title-generator"
 headers = {"Authorization": f"Bearer {settings.HUGGINGFACEHUB_API_TOKEN}"}
 
 
