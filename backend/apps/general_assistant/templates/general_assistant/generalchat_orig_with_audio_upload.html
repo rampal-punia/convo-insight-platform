@@ -1,0 +1,334 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load custom_markdown %}
+
+{% block title %}- Chat{% endblock %}
+
+{% block on_page_css %}
+<link rel="stylesheet" type="text/css" media="all" href="{% static 'css/style.css' %}">
+{% endblock on_page_css %}
+
+{% block content %}
+<div class="chat-container">
+    <div id="qa-container" class="col-md-11 col-xl-11 mx-4">
+        <h2 id="conversation-title">{% if conversation.title %}{{ conversation.title|truncatechars:40 }}{% else %}Untitled Conversation{% endif %}</h2>
+        <hr>
+        {% if previous_messages %}
+            {% for message in previous_messages %}
+                <div class="qa-pair" id="qa-pair-{{ forloop.counter }}">
+                    {% if message.is_from_user %}
+                        <div class="question-area d-flex justify-content-end">
+                            {% if message.content_type == 'AU' %}
+                                <div class="audio-message">
+                                    <audio controls src="{{ message.audio_content.audio_file.url }}"></audio>
+                                    <span>{{ message.audio_content.transcript }}</span>
+                                </div>
+                            {% else %}
+                                <textarea class="question-textarea text-white" readonly>{{ message.content }}</textarea>
+                            {% endif %}
+                        </div>
+                    {% else %}
+                        <div class="card">
+                            <div class="card-body">
+                                <div class="answer-area">
+                                    <div class="message-content">
+                                        {% if message.content_type == 'AU' %}
+                                            <div class="audio-message">
+                                                <audio controls src="{{ message.audio_content.audio_file.url }}"></audio>
+                                                <span>{{ message.audio_content.transcript }}</span>
+                                            </div>
+                                        {% else %}
+                                            {{ message.content|markdown_to_html|safe }}
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        {% endif %}
+    </div>
+    <div class="input-group mb-1 fixed-bottom-input bg-light">
+        <div class="audio-controls">
+            <button id="startRecording" class="btn btn-primary">Start Recording</button>
+            <button id="stopRecording" class="btn btn-danger" disabled>Stop Recording</button>
+        </div>
+        <textarea class="form-control user_query_area mx-2" id="chat-message-input" placeholder="Enter your query"></textarea>
+        <button class="btn btn-primary" type="button" id="chat-message-submit">
+            <i data-feather="arrow-up" class="f-30"></i>
+        </button>
+    </div>
+</div>
+{% endblock content %}
+
+{% block on_page_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/RecordRTC/5.6.2/RecordRTC.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+    let recorder;
+    const startRecordingButton = document.getElementById('startRecording');
+    const stopRecordingButton = document.getElementById('stopRecording');
+    const chatMessageInput = document.getElementById('chat-message-input');
+    const chatMessageSubmit = document.getElementById('chat-message-submit');
+    const qaContainer = document.getElementById('qa-container');
+    const conversationTitle = document.getElementById('conversation-title');
+
+    let questionCounter = {{ previous_messages|length }};
+    let currentPairId = null;
+    let accumulatedChunks = '';
+    let isNewConversation = true;
+    let conversationId = '{{ conversation_id }}';
+    let chatSocket;
+
+    function connectWebSocket(conversationId) {
+        const wsScheme = window.location.protocol === 'http:' ? 'ws' : 'wss';
+        const wsPath = `${wsScheme}://${window.location.host}/ws/general_assistant/${conversationId}/`;
+        
+        chatSocket = new WebSocket(wsPath);
+
+        chatSocket.onopen = function(e) {
+            console.log('WebSocket connection established');
+        };
+
+        chatSocket.onmessage = function(e) {
+            const data = JSON.parse(e.data);
+            handleWebSocketMessage(data);
+        };
+
+        chatSocket.onclose = function(e) {
+            console.error('WebSocket closed unexpectedly');
+        };
+    }
+
+    function generateUUID() {
+        if (!conversationId) {
+            conversationId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+        return conversationId;
+    }
+
+    function handleWebSocketMessage(data) {
+        if (data.type === 'welcome') {
+            console.log(data.message);
+        } else if (data.type === 'title_update') {
+            updateConversationTitle(data.title);
+        } else if (data.event === 'on_parser_start' || data.event === 'on_parser_stream') {
+            if (data.data && data.data.chunk) {
+                if (data.name === "Assistant") {
+                    accumulatedChunks += data.data.chunk;
+                    updateAnswer();
+                }
+            }
+        } else if (data.type === 'transcription' || data.type === 'ai_response') {
+            updateOrCreateMessage(data);
+        }
+    }
+
+    function updateConversationTitle(newTitle) {
+        const titleElement = document.getElementById('conversation-title');
+        if (titleElement) {
+            titleElement.textContent = newTitle;
+        }
+        document.title = `Chat: ${newTitle}`;
+    }
+
+    function addQuestionAnswerPair(message, isFromUser, pairId = null, isAudio = false) {
+        const qaContainer = document.getElementById('qa-container');
+        const qaPair = document.createElement('div');
+        qaPair.className = 'qa-pair';
+        qaPair.id = `qa-pair-${pairId}`;
+
+        if (isFromUser) {
+            if (isAudio) {
+                qaPair.innerHTML = `
+                    <div class="question-area d-flex justify-content-end">
+                        <div class="audio-message">
+                            <audio controls src="${message}"></audio>
+                            <span>Transcription in progress...</span>
+                        </div>
+                    </div>
+                `;
+            } else {
+                qaPair.innerHTML = `
+                    <div class="question-area d-flex justify-content-end">
+                        <textarea class="question-textarea bg-primary text-white" readonly>${message}</textarea>
+                    </div>
+                `;
+            }
+        } else {
+            qaPair.innerHTML = `
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <div id="answer-area-${pairId}" class="answer-area">${marked.parse(message)}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        qaContainer.appendChild(qaPair);
+        adjustTextareaHeights();
+        scrollToBottom();
+    }
+
+    function updateAnswer() {
+        if (currentPairId) {
+            let currentAnswerArea = document.getElementById(`answer-area-${currentPairId}`);
+            if (!currentAnswerArea) {
+                const qaPair = document.getElementById(`qa-pair-${currentPairId}`);
+                if (qaPair) {
+                    const cardDiv = document.createElement('div');
+                    cardDiv.className = 'card';
+                    const cardBodyDiv = document.createElement('div');
+                    cardBodyDiv.className = 'card-body';
+                    const answerArea = document.createElement('div');
+                    answerArea.id = `answer-area-${currentPairId}`;
+                    answerArea.className = 'answer-area';
+                    
+                    cardBodyDiv.appendChild(answerArea);
+                    cardDiv.appendChild(cardBodyDiv);
+                    qaPair.appendChild(cardDiv);
+                    
+                    currentAnswerArea = answerArea;
+                }
+            }
+            
+            if (currentAnswerArea) {
+                currentAnswerArea.innerHTML = marked.parse(accumulatedChunks);
+                scrollToBottom();
+            }
+        }
+    }
+
+    function updateOrCreateMessage(data) {
+        let messageElement = document.getElementById(`message-${data.id}`);
+        if (!messageElement) {
+            messageElement = document.createElement('div');
+            messageElement.id = `message-${data.id}`;
+            messageElement.className = 'card mb-3';
+            qaContainer.appendChild(messageElement);
+        }
+
+        if (data.type === 'transcription') {
+            messageElement.innerHTML = `
+                <div class="card-body">
+                    <div class="message-content">${data.message}</div>
+                </div>
+            `;
+        } else if (data.type === 'ai_response') {
+            messageElement.innerHTML = `
+                <div class="card-body">
+                    <div class="audio-message">
+                        <audio controls src="${data.audio_url}"></audio>
+                        <div class="message-content">${marked.parse(data.message)}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        scrollToBottom();
+    }
+
+    startRecordingButton.onclick = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            recorder = new RecordRTC(stream, {
+                type: 'audio',
+                mimeType: 'audio/webm',
+                recorderType: RecordRTC.StereoAudioRecorder,
+                numberOfAudioChannels: 1,
+                desiredSampRate: 16000
+            });
+            recorder.startRecording();
+
+            startRecordingButton.disabled = true;
+            stopRecordingButton.disabled = false;
+        } catch (error) {
+            console.error('Error starting recording:', error);
+        }
+    };
+
+    stopRecordingButton.onclick = () => {
+        recorder.stopRecording(() => {
+            const blob = recorder.getBlob();
+            sendAudioMessage(blob);
+
+            startRecordingButton.disabled = false;
+            stopRecordingButton.disabled = true;
+        });
+    };
+
+    function sendAudioMessage(audioBlob) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const base64Audio = e.target.result.split(',')[1];
+            questionCounter++;
+            currentPairId = questionCounter;
+            accumulatedChunks = ''; // Clear accumulated chunks
+            addQuestionAnswerPair(URL.createObjectURL(audioBlob), true, currentPairId, true);
+            chatSocket.send(JSON.stringify({
+                'type': 'AU',
+                'message': base64Audio,
+                'uuid': generateUUID()
+            }));
+        };
+        reader.readAsDataURL(audioBlob);
+    }
+
+    chatMessageSubmit.onclick = function() {
+        const message = chatMessageInput.value.trim();
+        if (message) {
+            questionCounter++;
+            currentPairId = questionCounter;
+            accumulatedChunks = ''; // Clear accumulated chunks
+            addQuestionAnswerPair(message, true, currentPairId);
+            addQuestionAnswerPair('', false, currentPairId);
+            
+            chatSocket.send(JSON.stringify({
+                message: message,
+                type: 'TE',
+                uuid: generateUUID()
+            }));
+            chatMessageInput.value = '';
+        }
+    };
+
+    chatMessageInput.onkeypress = function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            chatMessageSubmit.click();
+        }
+    };
+
+    function adjustTextareaHeights() {
+        const textareas = document.querySelectorAll('.question-textarea');
+        textareas.forEach(textarea => {
+            textarea.style.height = 'auto';
+            textarea.style.height = (textarea.scrollHeight) + 'px';
+        });
+    }
+
+    function scrollToBottom() {
+        qaContainer.scrollTop = qaContainer.scrollHeight;
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        scrollToBottom();
+        adjustTextareaHeights();
+        connectWebSocket(conversationId);
+    });
+</script>
+{% endblock on_page_js %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', (event) => {
+        document.querySelectorAll('pre code').forEach((el) => {
+            el.innerHTML = el.innerHTML.replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+        });
+    });
+</script>
+{% endblock extra_js %}
