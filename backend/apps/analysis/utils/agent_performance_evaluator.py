@@ -1,7 +1,11 @@
+import logging
+
 from typing import List, Dict
 from django.db.models import Avg
 from analysis.models import LLMAgentPerformance, ConversationMetrics
 from convochat.models import Conversation
+
+logger = logging.getLogger(__name__)
 
 
 class AgentPerformanceEvaluator:
@@ -84,4 +88,4 @@ class AgentPerformanceEvaluator:
 if __name__ == "__main__":
     evaluator = AgentPerformanceEvaluator()
     result = evaluator.evaluate_conversation("conversation_id_here")
-    print(result)
+    logger.info(result)
