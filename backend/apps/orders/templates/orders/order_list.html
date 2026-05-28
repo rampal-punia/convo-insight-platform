@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}- My Orders{% endblock title %}
+
+{% block on_page_css %}
+<style>
+    .btn-block {
+        width: 100%;
+    }
+</style>
+{% endblock on_page_css %}
+
+{% block content %}
+<!-- [ Main Content ] start -->
+ <div class="container">
+    <div class="col-xl-12 col-md-12 mx-2">
+    <h2>My Orders ({{ orders.count }})</h2>
+    <hr>
+    {% for order in orders %}
+      <div class="card mb-3">
+        <div class="card-header">
+            <div class="row">
+                <div class="col-md-2">
+                    <span class="text-body-secondary"> ORDER ID  </span><br>
+                    Order #{{ order.id }} 
+                </div>
+                <div class="col-md-2">
+                    <span class="text-body-secondary"> ORDER PLACED  </span><br>
+                    {{ order.created }}
+                </div>
+                <div class="col-md-2">
+                    <span class="text-body-secondary"> TOTAL </span><br>
+                    {{ order.total_amount }}
+                </div>
+                <div class="col-md-4">
+                </div>
+                <div class="col-md-2">
+                    <span class="text-body-secondary"> SHIP TO </span><br>
+                    {{ order.user.username|capfirst }}
+                </div>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-9">
+                    <h5 class="card-title"></h5>
+                    <p class="card-text">Status: <b>{{ order.get_status_display}}</b></p>
+                    {% for item in order.items.all %}
+                    <p class="card-text">
+                      <b>Qty</b>: {{ item.quantity }} - <b>Price</b>: {{ item.price }} - <b>Product</b>: {{ item.product }} - <b>Category</b>: {{ item.product.category }}
+                    </a></p>
+                    
+                    {% endfor %}
+                </div>
+                <div class="col-md-3">
+                    <a class="btn btn-outline-primary btn-block rounded-pill mb-2" href="{% url 'orders:order_detail_url' order.id %}">View</a><br>
+                    <a href="{% url 'orders:order_detail_url' order.id %}" class="btn btn-outline-primary btn-block rounded-pill mb-2">Get Support</a> 
+                </div>
+            </div>
+        </div>
+        <div class="card-footer text-body-secondary">
+          <h6 class="text-body-secondary"><i class="fas fa-circle text-c-green f-5 m-r-15"></i>
+            {{ order.created }}
+          </h6>
+        </div>
+      </div>
+    {% empty %}
+        No order Found.
+    {% endfor %}
+  </div>
+ </div>
+
+{% endblock content %}
+
+
