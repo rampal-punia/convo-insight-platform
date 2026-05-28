@@ -151,32 +151,34 @@ class GeneralChatConsumer(AsyncWebsocketConsumer):
         }))
 
     async def handle_image_message(self, image_data):
-        image_handler = ImageModalHandler()
+        try:
+            image_handler = ImageModalHandler()
 
-        # Decode base64 image data
-        img_content = base64.b64decode(image_data)
+            # Decode base64 image data
+            img_content = base64.b64decode(image_data)
 
-        # Process image
-        processed_image, image_description = await image_handler.process_image(img_content)
+            # Process image
+            processed_image, image_description = await image_handler.process_image(img_content)
 
-        # Save user's image message
-        user_message = await self.save_message('IM', is_from_user=True)
-        img_message = await self.save_image_message(user_message, processed_image, image_description)
+            # Save user's image message
+            user_message = await self.save_message('IM', is_from_user=True)
+            img_message = await self.save_image_message(user_message, processed_image, image_description)
 
-        # Send image description(Initial from the image descriptor model) to the client
-        await self.send(text_data=json.dumps({
-            'type': 'image_description',
-            'message': image_description,
-            'id': str(user_message.id)
-        }))
+            # Send image description(Initial from the image descriptor model) to the client
+            await self.send(text_data=json.dumps({
+                'type': 'image_description',
+                'message': image_description,
+                'id': str(user_message.id)
+            }))
 
-        # Generate detailed AI response
-        ai_response = await self.generate_ai_response(image_description, user_message)
-        logger.debug("AI Response: %s", ai_response)
-
-        # Save AI's text message
-        ai_message = await self.save_message('IM', is_from_user=False, in_reply_to=user_message)
-        await self.save_chat_message(ai_message, ai_response)
+            # Generate detailed AI response (also saves the AI message)
+            ai_response = await self.generate_ai_response(image_description, user_message)
+            logger.debug("AI Response: %s", ai_response)
+        except Exception as exc:
+            logger.error("Error handling image message: %s", exc, exc_info=True)
+            await self.send(text_data=json.dumps({
+                'error': 'Failed to process image. Please try again.'
+            }))
 
     async def generate_ai_response(self, input_text, user_message):
         input_with_history = {
