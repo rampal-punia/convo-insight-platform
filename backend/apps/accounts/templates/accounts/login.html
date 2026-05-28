@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% load static i18n %}
+{% load account socialaccount %}
+{% load crispy_forms_tags %}
+{% url 'account_signup' as signup_url %}
+
+{% block title %}{% trans "Log In" %}{% endblock title %}
+
+{% block on_page_css %}
+<link rel="stylesheet" href="{% static 'css/styles/style.css' %}">
+{% endblock on_page_css %}
+
+{% block leftbar %}
+
+{% endblock leftbar %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-left">
+        <div class="col-md-6">
+            <h1 class="text-center mb-4">
+                {% trans "Log In" %}
+            </h1>
+            {% crispy form %}
+            <p class="text-center mt-3">
+                {% blocktrans %}If you have not created an account yet, then
+                    <a href="{{signup_url}}"> Sign up</a> first.
+                {% endblocktrans %}
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock content %}
