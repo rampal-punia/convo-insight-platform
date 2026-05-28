@@ -1,4 +1,5 @@
 import os
+import logging
 import torch
 from transformers import (
     AutoTokenizer,
@@ -8,6 +9,8 @@ from transformers import (
 )
 from datasets import load_dataset
 from sklearn.model_selection import train_test_split
+
+logger = logging.getLogger(__name__)
 
 
 class LLMFineTuner:
@@ -96,16 +99,16 @@ class LLMFineTuner:
 
         # Train model
         train_result = self.train_model(trainer, checkpoint_dir)
-        print(f"Training results: {train_result}")
+        logger.info(f"Training results: {train_result}")
 
         # Evaluate model
         eval_result = self.evaluate_model(trainer)
-        print(f"Evaluation results: {eval_result}")
+        logger.info(f"Evaluation results: {eval_result}")
 
         # Save model
         self.save_model(trainer)
 
-        print(f"Model saved to {self.output_dir}")
+        logger.info(f"Model saved to {self.output_dir}")
 
 
 # Usage example
