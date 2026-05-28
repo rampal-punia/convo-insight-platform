@@ -1,6 +1,4 @@
 import logging
-import torch
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from typing import List, Dict
 
 logger = logging.getLogger(__name__)
@@ -8,6 +6,8 @@ logger = logging.getLogger(__name__)
 
 class IntentRecognizer:
     def __init__(self, model_name: str = "facebook/bart-large-mnli"):
+        import torch
+        from transformers import AutoTokenizer, AutoModelForSequenceClassification
         self.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu")
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -17,6 +17,7 @@ class IntentRecognizer:
                               "request", "feedback", "greeting", "other"]
 
     def recognize_intent(self, texts: List[str]) -> List[Dict[str, float]]:
+        import torch
         results = []
         for text in texts:
             inputs = self.tokenizer(
