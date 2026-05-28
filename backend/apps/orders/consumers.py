@@ -165,7 +165,6 @@ class OrderSupportConsumer(AsyncWebsocketConsumer):
 
             # Save the graph visualization
             output_path = await graph_builder.save_graph_visualization()
-            # print(f"Graph saved to: {output_path}")
 
             # # Use the png_path as needed in your WebSocket communication
             # relative_path = os.path.relpath(output_path, settings.MEDIA_ROOT)
