@@ -1,0 +1,854 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load custom_markdown custom_filters %}
+
+{% block title %}Order Support - #{{ order.id }}{% endblock %}
+
+{% block on_page_css %}
+<link rel="stylesheet" href="{% static 'orders/css/styles.css' %}">
+{% endblock on_page_css %}
+
+{% block content %}
+<div class="container py-4">
+    <!-- Order Header -->
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="h3">Order #{{ order.id }}</h1>
+            <p class="text-muted">Placed on {{ order.created|date:"F j, Y" }}</p>
+        </div>
+        <div class="col-auto">
+            <span class="status-badge status-{{ order.status|lower }}">
+                {{ order.get_status_display }}
+            </span>
+        </div>
+    </div>
+
+    <!-- Order Summary Card -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="card-title mb-0">Order Summary</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <h6>Shipping Details</h6>
+                    <p>{{ order.delivery_address|linebreaks }}</p>
+                    <p><strong>Method:</strong> {{ order.get_shipping_method_display }}</p>
+                    {% if order.tracking_number %}
+                        <p><strong>Tracking:</strong> {{ order.tracking_number }}</p>
+                        <p><strong>Carrier:</strong> {{ order.carrier }}</p>
+                    {% endif %}
+                </div>
+                <div class="col-md-6">
+                    <h6>Order Details</h6>
+                    <p><strong>Total Amount:</strong> ${{ order.total_amount }}</p>
+                    <p><strong>Status:</strong> {{ order.get_status_display }}</p>
+                    {% if order.estimated_delivery %}
+                        <p><strong>Estimated Delivery:</strong> {{ order.estimated_delivery|date:"F j, Y" }}</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Order Items -->
+    <div class="card mb-4" data-order-id="{{ order.id }}">
+        <div class="card-header">
+            <h5 class="card-title mb-0">Order Items</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Product</th>
+                            <th>Category</th>
+                            <th>Quantity</th>
+                            <th>Price</th>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in order.items.all %}
+                        <tr>
+                            <td>{{ item.product.name }}</td>
+                            <td>{{ item.product.category }}</td>
+                            <td>{{ item.quantity }}</td>
+                            <td>${{ item.product.price }}</td>
+                            <td>${{ item.quantity|multiply:item.product.price }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="4" class="text-end"><strong>Total:</strong></td>
+                            <td><strong>${{ order.total_amount }}</strong></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tracking Timeline -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="card-title mb-0">Tracking Timeline</h5>
+            <button id="refresh-tracking" class="btn btn-outline-primary btn-sm">
+                <i class="fas fa-sync-alt"></i> Refresh
+            </button>
+        </div>
+        <div class="card-body">
+            <div class="tracking-timeline" id="tracking-timeline">
+                {% for tracking in order.tracking_history.all %}
+                <div class="timeline-item {% if forloop.first %}active{% endif %}">
+                    <div class="timeline-content">
+                        <h6>{{ tracking.get_status_display }}</h6>
+                        <p class="text-muted mb-1">{{ tracking.timestamp|date:"F j, Y g:i A" }}</p>
+                        {% if tracking.location %}
+                            <p class="mb-1"><strong>Location:</strong> {{ tracking.location }}</p>
+                        {% endif %}
+                        {% if tracking.description %}
+                            <p class="mb-0">{{ tracking.description }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+                {% empty %}
+                <p class="text-muted">No tracking updates available yet.</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Intent Selection -->
+    <div class="intent-selector" id="intent-selector">
+        <h4 class="mb-4">How can we help you with your order?</h4>
+        
+        <!-- Intent buttons with specific contexts -->
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <button class="intent-btn w-100" data-intent="track_order" 
+                        {% if order.status == 'CA' or order.status == 'RT' %}disabled{% endif %}>
+                    <strong>Track Order</strong>
+                    <p class="mb-0 text-muted">Get real-time tracking updates</p>
+                    <i class="fas fa-shipping-fast"></i>
+                </button>
+            </div>
+            <div class="col-md-6">
+                <button class="intent-btn w-100" data-intent="modify_order_quantity" 
+                        {% if order.status != 'PE' and order.status != 'PR' %}disabled{% endif %}>
+                    <strong>Modify Order</strong>
+                    <p class="mb-0 text-muted">Update quantities or shipping</p>
+                    <i class="fas fa-edit"></i>
+                </button>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-6">
+                <button class="intent-btn w-100" data-intent="delivery_issue" 
+                        {% if order.status == 'CA' or order.status == 'RT' %}disabled{% endif %}>
+                    <strong>Report Issue</strong>
+                    <p class="mb-0 text-muted">Report delivery problems</p>
+                    <i class="fas fa-exclamation-triangle"></i>
+                </button>
+            </div>
+            <div class="col-md-6">
+                <button class="intent-btn w-100" data-intent="order_detail">
+                    <strong>Order Details</strong>
+                    <p class="mb-0 text-muted">View complete order information</p>
+                    <i class="fas fa-info-circle"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="intent-description mt-3 p-3 bg-light" id="intent-description">
+            Select an option above to get started with your request.
+        </div>
+    </div>
+
+    <!-- Chat Interface -->
+    <div class="card mb-4" id="chat-interface" style="display: none;">
+        <div class="card-header">
+            <h5 class="card-title mb-0">Order Support Chat</h5>
+        </div>
+        <div class="card-body">
+            <!-- Chat Messages Container -->
+            <div class="chat-messages" id="chat-messages">
+                <!-- Messages will be inserted here -->
+            </div>
+            
+            <!-- Chat Input -->
+            <div class="chat-input">
+                <div class="input-group">
+                    <input type="text" class="form-control" id="user-input" 
+                           placeholder="Type your message...">
+                    <button class="btn btn-primary" id="send-message">
+                        Send <i class="fas fa-paper-plane ms-1"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div class="loading-spinner" id="loading-spinner" style="display: none;">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <p class="mt-2">Processing your request...</p>
+    </div>
+
+    {% if graph_image_url %}
+        <div class="text-center" id="graph-image">
+            {% comment %} <img src="{{ graph_image_url }}" alt="Graph Visualization"> {% endcomment %}
+        </div>
+    {% endif %}
+
+    <!-- Confirmation Dialog -->
+    <div class="confirmation-dialog" id="confirmation-dialog" style="display: none;">
+        <h5>Confirm Action</h5>
+        <div id="confirmation-message"></div>
+        <div class="confirmation-buttons mt-3">
+            <button class="btn btn-primary" onclick="window.orderSupport.handleConfirmation(true)">Approve</button>
+            <button class="btn btn-secondary" onclick="window.orderSupport.handleConfirmation(false)">Decline</button>
+        </div>
+        <div class="confirmation-reason mt-3" id="confirmation-reason" style="display: none;">
+            <label for="decline-reason" class="form-label">Please provide a reason:</label>
+            <textarea class="form-control" id="decline-reason" rows="2"></textarea>
+        </div>
+    </div>
+
+    <!-- Toast Container for Notifications -->
+    <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1050">
+        <div class="toast-container"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block on_page_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.3.3/purify.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+// Configure marked for Markdown parsing
+marked.setOptions({
+    breaks: true,
+    gfm: true,
+    sanitize: false,
+    headerIds: false
+});
+
+class OrderSupport {
+    constructor() {
+        this.ws = null;
+        this.reconnectAttempts = 0;
+        this.isReconnecting = false;
+        this._conversationUUID = null;
+        this.orderID = '{{ order.id }}';
+        this.currentToolCalls = null;
+        this.pendingMessages = [];
+        this.MAX_RECONNECT_ATTEMPTS = 5;
+        this.RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000];
+        
+        this.initializeEventListeners();
+        this.connectWebSocket();
+    }
+
+    initializeEventListeners() {
+        // Intent button listeners
+        document.querySelectorAll('.intent-btn').forEach(button => {
+            if (!button.disabled) {
+                button.addEventListener('click', () => this.handleIntentSelection(button.dataset.intent));
+            }
+        });
+
+        // Chat input listeners
+        document.getElementById('send-message').addEventListener('click', () => this.handleUserInput());
+        document.getElementById('user-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                this.handleUserInput();
+            }
+        });
+
+        // Tracking refresh button
+        document.getElementById('refresh-tracking').addEventListener('click', () => this.refreshTracking());
+    }
+
+    connectWebSocket() {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            console.log('WebSocket already connected');
+            return;
+        }
+
+        if (this.isReconnecting) {
+            console.log('Already attempting to reconnect');
+            return;
+        }
+
+        try {
+            const wsScheme = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+            const wsPath = `${wsScheme}${window.location.host}/ws/order_support/${this.conversationUUID}/`;
+            
+            this.ws = new WebSocket(wsPath);
+            this.setupWebSocketHandlers();
+        } catch (error) {
+            console.error('Error creating WebSocket:', error);
+            this.handleReconnection();
+        }
+    }
+
+    setupWebSocketHandlers() {
+        this.ws.onopen = () => {
+            console.log('WebSocket connection established');
+            this.reconnectAttempts = 0;
+            this.isReconnecting = false;
+            
+            // Send any pending messages
+            while (this.pendingMessages.length > 0) {
+                const message = this.pendingMessages.shift();
+                this.sendMessage(message);
+            }
+        };
+
+        this.ws.onclose = (e) => {
+            console.log('WebSocket closed:', e.code, e.reason);
+            this.handleReconnection();
+        };
+
+        this.ws.onerror = (e) => {
+            console.error('WebSocket error:', e);
+            if (this.ws.readyState === WebSocket.OPEN) {
+                this.ws.close();
+            }
+        };
+
+        this.ws.onmessage = (event) => this.handleWebSocketMessage(event);
+    }
+
+    handleReconnection() {
+        if (this.isReconnecting || this.reconnectAttempts >= this.MAX_RECONNECT_ATTEMPTS) {
+            if (this.reconnectAttempts >= this.MAX_RECONNECT_ATTEMPTS) {
+                this.showToast('Error', 'Connection lost. Please refresh the page.');
+            }
+            return;
+        }
+
+        this.isReconnecting = true;
+        const delay = this.RECONNECT_DELAYS[this.reconnectAttempts] || 
+                     this.RECONNECT_DELAYS[this.RECONNECT_DELAYS.length - 1];
+        
+        setTimeout(() => {
+            this.reconnectAttempts++;
+            this.isReconnecting = false;
+            this.connectWebSocket();
+        }, delay);
+    }
+
+    sendMessage(messageData) {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            this.pendingMessages.push(messageData);
+            this.connectWebSocket();
+            return;
+        }
+
+        try {
+            messageData.uuid = this.conversationUUID;
+            this.ws.send(JSON.stringify(messageData));
+        } catch (error) {
+            console.error('Error sending message:', error);
+            this.handleReconnection();
+        }
+    }
+
+    // Add getter for conversationUUID
+    get conversationUUID() {
+        // If _conversationUUID is not set, check for server-provided value or generate new
+        if (!this._conversationUUID) {
+            const serverProvidedUUID = '{{ conversation_id }}';
+            this._conversationUUID = serverProvidedUUID || this.generateUUID();
+        }
+        return this._conversationUUID;
+    }
+
+    generateUUID() {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    }
+
+    handleIntentSelection(intent) {
+        // Clear existing messages and check WebSocket connection
+        console.log(`Selected intent: ${intent}`);
+        const orderStatus = this.getOrderStatus();
+        console.log(`Current order status: ${orderStatus}`);
+
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            this.showToast('Error', 'Connection lost. Reconnecting...', 'error');
+            this.connectWebSocket();
+            return;
+        }
+
+        try {
+            // Update UI elements
+            this.setActiveIntent(intent);
+            const intentDescriptionEl = document.getElementById('intent-description');
+            const loadingSpinner = document.getElementById('loading-spinner');
+            const chatInterface = document.getElementById('chat-interface');
+            const messagesContainer = document.getElementById('chat-messages');
+
+            // Clear previous messages
+            if (messagesContainer) {
+                messagesContainer.innerHTML = '';
+            }
+
+            // Update intent description
+            if (intentDescriptionEl) {
+                intentDescriptionEl.textContent = this.getIntentDescription(intent);
+            }
+
+            // Show loading spinner
+            if (loadingSpinner) {
+                loadingSpinner.style.display = 'block';
+            }
+
+            // Validate order status for specific intents
+            const orderStatus = this.getOrderStatus();
+            if (intent === 'modify_order_quantity' && !['PE', 'PR'].includes(orderStatus)) {
+                this.showToast('Warning', 'Order can only be modified in Pending or Processing status', 'warning');
+                if (loadingSpinner) {
+                    loadingSpinner.style.display = 'none';
+                }
+                return;
+            }
+
+            if (intent === 'track_order' && ['CA', 'RT'].includes(orderStatus)) {
+                this.showToast('Warning', 'Cannot track cancelled or returned orders', 'warning');
+                if (loadingSpinner) {
+                    loadingSpinner.style.display = 'none';
+                }
+                return;
+            }
+
+            // Show chat interface
+            if (chatInterface) {
+                chatInterface.style.display = 'block';
+                
+                // Add initial system message
+                this.appendMessage(
+                    `Starting ${intent.replace('_', ' ')} assistance for Order #${this.orderID}...`,
+                    false,
+                    'system'
+                );
+            }
+
+            // Send intent through WebSocket
+            const messageData = {
+                type: 'intent',
+                intent: intent,
+                order_id: this.orderID,
+                uuid: this.conversationUUID
+            };
+            this.sendMessage(messageData);
+
+            // Scroll chat to bottom
+            this.scrollToBottom();
+
+        } catch (error) {
+            console.error('Error in handleIntentSelection:', error);
+            this.showToast('Error', 'Failed to process intent selection', 'error');
+            
+            // Hide loading spinner on error
+            const loadingSpinner = document.getElementById('loading-spinner');
+            if (loadingSpinner) {
+                loadingSpinner.style.display = 'none';
+            }
+        }
+    }
+
+    // Helper method to get current order status
+    getOrderStatus() {
+        console.log('Getting order status...');
+        const statusBadge = document.querySelector('.status-badge');
+        if (statusBadge) {
+            const statusText = statusBadge.textContent.trim().toUpperCase();
+            console.log(`Found status badge with text: ${statusText}`);
+            // Map visible status to backend codes
+            const statusMap = {
+                'PENDING': 'PE',
+                'PROCESSING': 'PR',
+                'SHIPPED': 'SH',
+                'DELIVERED': 'DE',
+                'CANCELLED': 'CA',
+                'RETURNED': 'RT'
+            };
+            return statusMap[statusText] || null;
+        }
+        console.warn('No status badge found');
+        return null;
+    }
+
+    handleUserInput() {
+        const inputElement = document.getElementById('user-input');
+        const message = inputElement.value.trim();
+        
+        if (!message) return;
+        
+        this.appendMessage(message, true);
+        inputElement.value = '';
+        
+        // Check if we're awaiting confirmation and user says yes
+        if (this.awaitingUserConfirmation && 
+            message.toLowerCase().match(/^(yes|yeah|sure|proceed|confirm)$/)) {
+            // Reset the flag
+            this.awaitingUserConfirmation = false;
+            // Show loading spinner
+            document.getElementById('loading-spinner').style.display = 'block';
+            return;
+        }
+        
+        const messageData = {
+            type: 'message',
+            message: message,
+            order_id: this.orderID,
+            uuid: this.conversationUUID
+        };
+        this.sendMessage(messageData);
+    }
+
+    showGraphVisualization () {
+        // Get image tag
+        const graphImage = document.getElementById('graph-image');
+        graphImage.innerHTML = `
+            <div class="toast-body">
+                <img src="${message.url}" alt="Graph Visualization">
+            </div>
+        `;
+    }
+
+
+    handleWebSocketMessage(event) {
+        const data = JSON.parse(event.data);
+        const loadingSpinner = document.getElementById('loading-spinner');
+        
+        console.log("Received WebSocket message:", data);
+        
+        if (loadingSpinner) loadingSpinner.style.display = 'none';
+
+        switch(data.type) {
+            case 'welcome':
+                this.appendMessage(data.message, false, 'system');
+                break;
+        
+            case 'agent_response':
+                this.appendMessage(data.message, false);
+                if (this.isConfirmationMessage(data.message)) {
+                    this.awaitingUserConfirmation = true;
+                }
+                break;
+
+            case 'graph_visualization':
+                this.showGraphVisualization(data.message);
+                break;
+
+            case 'tracking_update':
+                this.updateTrackingTimeline(data.tracking);
+                break;
+
+            case 'tool_response':
+                this.handleToolResponse(data);
+                break;
+
+            case 'confirmation_required':
+                console.log("Showing confirmation dialog:", data);
+                this.showConfirmationDialog(data.action, data.tool_calls);
+                break;
+
+            case 'operation_complete':
+                this.handleOperationComplete(data);
+                break;
+
+            case 'error':
+                this.showToast('Error', data.message, 'error');
+                break;
+        }
+    }
+
+    isConfirmationMessage(message) {
+        const confirmationKeywords = [
+            'would you like to proceed',
+            'shall i proceed',
+            'do you want to proceed',
+            'should i proceed',
+            'confirm'
+        ];
+        return confirmationKeywords.some(keyword => 
+            message.toLowerCase().includes(keyword)
+        );
+    }
+
+    handleToolResponse(data) {
+        // Append the tool response message
+        this.appendMessage(data.message, false, 'tool-response');
+        
+        // Update UI elements if provided
+        if (data.update_elements) {
+            this.updateUIElements(data.update_elements);
+        }
+    }
+
+    handleOperationComplete(data) {
+        // Hide confirmation dialog
+        document.getElementById('confirmation-dialog').style.display = 'none';
+        document.querySelector('.confirmation-overlay')?.remove();
+        
+        if (data.message) {
+            this.appendMessage(data.message, false, 'tool-response');
+        }
+        
+        // Update UI elements if provided
+        if (data.update_elements) {
+            this.updateUIElements(data.update_elements);
+        }
+        
+        // Show success message
+        if (data.completion_message) {
+            this.showToast('Success', data.completion_message, 'success');
+        }
+    }
+
+    updateTrackingTimeline(tracking) {
+        const timeline = document.getElementById('tracking-timeline');
+        if (!timeline) return;
+
+        const timelineHTML = tracking.map((event, index) => `
+            <div class="timeline-item ${index === 0 ? 'active' : ''}">
+                <div class="timeline-content">
+                    <h6>${event.status}</h6>
+                    <p class="text-muted mb-1">${new Date(event.timestamp).toLocaleString()}</p>
+                    ${event.location ? `<p class="mb-1"><strong>Location:</strong> ${event.location}</p>` : ''}
+                    ${event.description ? `<p class="mb-0">${event.description}</p>` : ''}
+                </div>
+            </div>
+        `).join('');
+
+        timeline.innerHTML = timelineHTML || '<p class="text-muted">No tracking updates available yet.</p>';
+    }
+
+    async refreshTracking() {
+        const refreshButton = document.getElementById('refresh-tracking');
+        refreshButton.disabled = true;
+        
+        try {
+            const messageData = {
+                type: 'track_order',
+                order_id: this.orderID,
+                uuid: this.conversationUUID
+            };
+            this.sendMessage(messageData);
+            
+            // Re-enable button after 5 seconds
+            setTimeout(() => {
+                refreshButton.disabled = false;
+            }, 5000);
+        } catch (error) {
+            console.error('Error refreshing tracking:', error);
+            this.showToast('Error', 'Failed to refresh tracking information', 'error');
+            refreshButton.disabled = false;
+        }
+    }
+
+    showConfirmationDialog(action, toolCalls) {
+        console.log("Showing confirmation dialog with action:", action);
+        
+        // Remove any existing overlay
+        document.querySelector('.confirmation-overlay')?.remove();
+        
+        // Create and append overlay
+        const overlay = document.createElement('div');
+        overlay.className = 'confirmation-overlay';
+        document.body.appendChild(overlay);
+
+        // Get dialog elements
+        const dialog = document.getElementById('confirmation-dialog');
+        const message = document.getElementById('confirmation-message');
+        
+        // Store tool calls for later use
+        this.currentToolCalls = toolCalls;
+
+        // Update dialog content
+        message.innerHTML = DOMPurify.sanitize(`
+            <p><strong>Please Confirm Action:</strong></p>
+            <p>${marked.parse(action)}</p>
+            ${toolCalls && toolCalls.length > 0 ? `
+                <p><strong>Changes to be made:</strong></p>
+                <ul>
+                    ${toolCalls.map(tc => `<li>${this.formatToolCall(tc)}</li>`).join('')}
+                </ul>
+            ` : ''}
+            <div class="alert alert-info">
+                Please confirm if you want to proceed with these changes.
+            </div>
+        `);
+
+        // Show the dialog and hide the reason input
+        dialog.style.display = 'block';
+        document.getElementById('confirmation-reason').style.display = 'none';
+    }
+
+    formatToolCall(toolCall) {
+        try {
+            const args = typeof toolCall.function.arguments === 'string' 
+                ? JSON.parse(toolCall.function.arguments) 
+                : toolCall.function.arguments;
+
+            switch(toolCall.function.name) {
+                case 'modify_order_quantity':
+                    return `Change quantity of product (ID: ${args.product_id}) to ${args.new_quantity}`;
+                    
+                case 'cancel_order':
+                    return `Cancel order ${args.order_id}`;
+                    
+                case 'track_order':
+                    return `Track order ${args.order_id}`;
+                    
+                default:
+                    return `${toolCall.function.name}: ${JSON.stringify(args)}`;
+            }
+        } catch (error) {
+            console.error('Error formatting tool call:', error);
+            return 'Error formatting tool details';
+        }
+    }
+
+    handleConfirmation(approved) {
+        const dialog = document.getElementById('confirmation-dialog');
+        const loadingSpinner = document.getElementById('loading-spinner');
+        const reasonElement = document.getElementById('confirmation-reason');
+        
+        if (!approved) {
+            reasonElement.style.display = 'block';
+            return;
+        }
+        
+        // Hide dialog and overlay
+        dialog.style.display = 'none';
+        document.querySelector('.confirmation-overlay')?.remove();
+        
+        // Show loading spinner
+        loadingSpinner.style.display = 'block';
+        
+        // Send confirmation message
+        const messageData = {
+            type: 'confirmation',
+            approved: true,
+            tool_calls: this.currentToolCalls,
+            uuid: this.conversationUUID
+        };
+        
+        this.sendMessage(messageData);
+        this.currentToolCalls = null;
+    }
+
+    declineWithReason() {
+        const reason = document.getElementById('decline-reason').value.trim() || 'Action declined by user';
+        const messageData = {
+            type: 'confirmation',
+            approved: false,
+            tool_calls: this.currentToolCalls,
+            reason: reason,
+            uuid: this.conversationUUID
+        };
+        
+        document.getElementById('confirmation-dialog').style.display = 'none';
+        document.querySelector('.confirmation-overlay')?.remove();
+        document.getElementById('loading-spinner').style.display = 'block';
+        
+        this.sendMessage(messageData);
+        this.currentToolCalls = null;
+    }
+
+    appendMessage(content, isUser = false, messageType = 'regular') {
+        const messagesContainer = document.getElementById('chat-messages');
+        const messageDiv = document.createElement('div');
+        
+        let messageClasses = `message ${isUser ? 'user-message' : 'assistant-message'}`;
+        if (messageType === 'tool-response') {
+            messageClasses += ' tool-response';
+        } else if (messageType === 'system') {
+            messageClasses += ' system-message';
+        }
+        
+        messageDiv.className = messageClasses;
+        
+        const messageContent = isUser ? content : DOMPurify.sanitize(marked.parse(content));
+        messageDiv.innerHTML = `
+            ${messageContent}
+            <div class="message-time">${new Date().toLocaleTimeString()}</div>
+        `;
+        
+        messagesContainer.appendChild(messageDiv);
+        this.scrollToBottom();
+    }
+
+    updateUIElements(updates) {
+        updates.forEach(update => {
+            const element = document.querySelector(update.selector);
+            if (element) {
+                element.outerHTML = DOMPurify.sanitize(update.html);
+            }
+        });
+    }
+
+    showToast(title, message, type = 'info') {
+        const toastContainer = document.querySelector('.toast-container');
+        const toast = document.createElement('div');
+        toast.className = `toast show bg-${type === 'error' ? 'danger' : 'success'} text-white`;
+        toast.setAttribute('role', 'alert');
+        
+        toast.innerHTML = `
+            <div class="toast-header bg-${type === 'error' ? 'danger' : 'success'} text-white">
+                <strong class="me-auto">${title}</strong>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast"></button>
+            </div>
+            <div class="toast-body">
+                ${message}
+            </div>
+        `;
+        
+        toastContainer.appendChild(toast);
+        setTimeout(() => toast.remove(), 5000);
+    }
+
+    scrollToBottom() {
+        const messagesContainer = document.getElementById('chat-messages');
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+
+    setActiveIntent(intent) {
+        document.querySelectorAll('.intent-btn').forEach(btn => {
+            btn.classList.remove('active');
+            if (btn.dataset.intent === intent && !btn.disabled) {
+                btn.classList.add('active');
+            }
+        });
+    }
+
+    getIntentDescription(intent) {
+        const descriptions = {
+            track_order: "I'll help you track your order and provide real-time delivery updates.",
+            modify_order_quantity: "I'll assist you in making changes to your order items or quantities.",
+            delivery_issue: "I'll help you report and resolve any delivery-related problems.",
+            order_detail: "I'll provide detailed information about your order and its current status."
+        };
+        return descriptions[intent] || "How can I assist you with your order?";
+    }
+}
+
+// Initialize OrderSupport when document is ready
+document.addEventListener('DOMContentLoaded', () => {
+    window.orderSupport = new OrderSupport();
+});
+</script>
+{% endblock on_page_js %}
