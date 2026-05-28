@@ -1,36 +1,39 @@
 import logging
-import torch
 import json
-from typing import Dict, List, Union
-from tqdm import tqdm
-from transformers import AutoTokenizer, AutoModel
-from torch.utils.data import Dataset, DataLoader
-from torch import nn
-from sklearn.model_selection import train_test_split
-import contractions
-import emoji
 import re
+from typing import Dict, List, Union
 from pathlib import Path
-import nltk
-import pandas as pd
-import numpy as np
-from nltk.tokenize import word_tokenize
-from nltk.stem import WordNetLemmatizer
-from sklearn.metrics import classification_report
-from sklearn.preprocessing import LabelEncoder
-import spacy
 
 logger = logging.getLogger(__name__)
-nlp = spacy.load('en_core_web_sm')
 
-try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download('punkt')
-    nltk.download('stopwords')
-    nltk.download('wordnet')
-    # Download required NLTK resources
-    nltk.download('punkt_tab')
+# Lazy-loaded heavy modules — only imported when actually needed
+_torch = None
+_pd = None
+_np = None
+
+
+def _get_torch():
+    global _torch
+    if _torch is None:
+        import torch
+        _torch = torch
+    return _torch
+
+
+def _get_spacy_nlp():
+    import spacy
+    return spacy.load('en_core_web_sm')
+
+
+def _ensure_nltk_data():
+    import nltk
+    try:
+        nltk.data.find('tokenizers/punkt')
+    except LookupError:
+        nltk.download('punkt')
+        nltk.download('stopwords')
+        nltk.download('wordnet')
+        nltk.download('punkt_tab')
 
 """
 6 Granular_Sentiment in the dataset are:
@@ -46,6 +49,9 @@ surprise	605
 
 class SentimentPreprocessor:
     def __init__(self):
+        _ensure_nltk_data()
+        from nltk.stem import WordNetLemmatizer
+        from transformers import AutoTokenizer
         self.lemmatizer = WordNetLemmatizer()
         self.tokenizer = AutoTokenizer.from_pretrained('roberta-base')
 
@@ -73,6 +79,8 @@ class SentimentPreprocessor:
 
     def preprocess_text(self, text):
         """Complete preprocessing pipeline"""
+        from nltk.tokenize import word_tokenize
+        _ensure_nltk_data()
         # Clean text
         text = self.clean_text(text)
 
@@ -85,7 +93,7 @@ class SentimentPreprocessor:
         return tokens
 
 
-class SentimentDataset(Dataset):
+class SentimentDataset:
     def __init__(self, texts, labels, tokenizer, max_length=128):
         self.texts = texts
         self.labels = labels
@@ -96,6 +104,7 @@ class SentimentDataset(Dataset):
         return len(self.texts)
 
     def __getitem__(self, idx):
+        torch = _get_torch()
         text = str(self.texts[idx])
         encoding = self.tokenizer(
             text,
@@ -113,27 +122,36 @@ class SentimentDataset(Dataset):
         }
 
 
-class SentimentClassifier(nn.Module):
-    def __init__(self, n_classes):
-        super().__init__()
-        self.roberta = AutoModel.from_pretrained('roberta-base')
-        self.drop = nn.Dropout(p=0.3)
-        self.fc = nn.Linear(self.roberta.config.hidden_size, n_classes)
+def _make_sentiment_classifier(n_classes):
+    """Factory: builds a SentimentClassifier(nn.Module) lazily."""
+    import torch.nn as nn
+    from transformers import AutoModel
 
-    def forward(self, input_ids, attention_mask):
-        outputs = self.roberta(
-            input_ids=input_ids,
-            attention_mask=attention_mask
-        )
+    class SentimentClassifier(nn.Module):
+        def __init__(self, n_classes):
+            super().__init__()
+            self.roberta = AutoModel.from_pretrained('roberta-base')
+            self.drop = nn.Dropout(p=0.3)
+            self.fc = nn.Linear(self.roberta.config.hidden_size, n_classes)
 
-        # Get [CLS] token representation
-        pooled_output = outputs.last_hidden_state[:, 0, :]
-        output = self.drop(pooled_output)
-        return self.fc(output)
+        def forward(self, input_ids, attention_mask):
+            outputs = self.roberta(
+                input_ids=input_ids,
+                attention_mask=attention_mask
+            )
+            pooled_output = outputs.last_hidden_state[:, 0, :]
+            output = self.drop(pooled_output)
+            return self.fc(output)
+
+    return SentimentClassifier(n_classes)
 
 
 def train_model(model, train_loader, val_loader, device, epochs=5):
     """Modified train_model function that returns the trained model and training info"""
+    import torch
+    from tqdm import tqdm
+    from torch import nn
+    from sklearn.metrics import classification_report
     optimizer = torch.optim.AdamW(model.parameters(), lr=2e-5)
     criterion = nn.CrossEntropyLoss()
     best_val_loss = float('inf')
@@ -203,6 +221,8 @@ def train_model(model, train_loader, val_loader, device, epochs=5):
 
 def save_trained_model(model, tokenizer, label_encoder, training_info, save_dir="sentiment_model"):
     """Function to save all model components"""
+    import torch
+    import pandas as pd
     save_dir = Path(save_dir)
     save_dir.mkdir(exist_ok=True)
 
@@ -232,6 +252,12 @@ def save_trained_model(model, tokenizer, label_encoder, training_info, save_dir=
 
 
 def main():
+    import torch
+    import pandas as pd
+    import numpy as np
+    from torch.utils.data import DataLoader
+    from sklearn.model_selection import train_test_split
+    from sklearn.preprocessing import LabelEncoder
     # Load and preprocess data
     df = pd.read_csv('sentimentanalysismulticlass.csv')
     preprocessor = SentimentPreprocessor()
@@ -260,7 +286,7 @@ def main():
 
     # Initialize model
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = SentimentClassifier(n_classes=len(label_encoder.classes_))
+    model = _make_sentiment_classifier(len(label_encoder.classes_))
     model.to(device)
 
     # Train model
@@ -296,6 +322,8 @@ class SentimentModelManager:
 
     def save_model(self, model, tokenizer, label_encoder, config: Dict = None) -> None:
         """Save all model components and configuration."""
+        import torch
+        import pandas as pd
         # Save model state
         torch.save(model.state_dict(),
                    self.model_dir / "sentiment_model_6cls.pt")
@@ -323,6 +351,12 @@ class SentimentModelManager:
 
     def load_model(self) -> None:
         """Load all model components."""
+        import torch
+        import pandas as pd
+        import numpy as np
+        from torch.utils.data import DataLoader
+        from sklearn.preprocessing import LabelEncoder
+        from transformers import AutoTokenizer
         # Load config
         with open(self.model_dir / "config.json", "r") as f:
             self.config = json.load(f)
@@ -340,7 +374,7 @@ class SentimentModelManager:
         self.label_encoder.classes_ = classes
 
         # Initialize and load model
-        self.model = SentimentClassifier(self.config["num_classes"])
+        self.model = _make_sentiment_classifier(self.config["num_classes"])
         self.model.load_state_dict(
             torch.load(self.model_dir / "sentiment_model_25Nov24.pt",
                        map_location=torch.device('cpu'))
