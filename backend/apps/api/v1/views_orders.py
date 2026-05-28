@@ -128,6 +128,47 @@ class OrderViewSet(viewsets.ModelViewSet):
         return Response(OrderDetailSerializer(order).data)
 
     @extend_schema(
+        summary="Refund an order (only allowed for delivered/shipped orders)",
+        request={
+            "application/json": {
+                "type": "object",
+                "properties": {
+                    "reason": {
+                        "type": "string",
+                        "description": "Optional reason for the refund",
+                    }
+                },
+            }
+        },
+        responses=OrderDetailSerializer,
+    )
+    @action(detail=True, methods=["post"], url_path="refund", url_name="refund")
+    def refund(self, request, pk=None):
+        order = self.get_object()
+        if order.status not in {
+            Order.Status.DELIVERED,
+            Order.Status.SHIPPED,
+            Order.Status.IN_TRANSIT,
+        }:
+            return Response(
+                {
+                    "detail": (
+                        f"Cannot refund an order with status '{order.get_status_display()}'. "
+                        "Only shipped, in-transit, or delivered orders can be refunded."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        reason = request.data.get("reason", "")
+        order.status = Order.Status.REFUNDED
+        order.save(update_fields=["status", "modified"])
+        order.add_tracking_update(
+            status=OrderTracking.TrackingStatus.RETURNED,
+            description=f"Refunded by {request.user}. Reason: {reason}" if reason else f"Refunded by {request.user}",
+        )
+        return Response(OrderDetailSerializer(order).data)
+
+    @extend_schema(
         summary="Mark an order as shipped (staff only)",
         request=None,
         responses=OrderDetailSerializer,
