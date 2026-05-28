@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - ConvoInsight{% endblock %}
+
+{% block content %}
+<div class="px-4 py-3">
+    <h2>ConvoInsight Dashboard</h2>
+    <hr>
+    <div class="row g-4">
+        <div class="col-md-3">
+            <div class="card text-bg-primary">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="bi bi-chat-dots"></i> Conversations</h5>
+                    <p class="card-text">View chat transcripts and NLP analysis</p>
+                    <a href="/api/v1/conversations/" class="btn btn-light btn-sm">Explore</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-bg-success">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="bi bi-box-seam"></i> Products</h5>
+                    <p class="card-text">Browse the product catalogue</p>
+                    <a href="/api/v1/products/" class="btn btn-light btn-sm">Explore</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-bg-warning">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="bi bi-receipt"></i> Orders</h5>
+                    <p class="card-text">Track and manage orders</p>
+                    <a href="/api/v1/orders/" class="btn btn-light btn-sm">Explore</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-bg-info">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="bi bi-robot"></i> Support Agent</h5>
+                    <p class="card-text">LangGraph-powered support agent</p>
+                    <a href="/api/docs/" class="btn btn-light btn-sm">API Docs</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Quick Links</h5>
+                    <div class="list-group">
+                        <a href="/admin/" class="list-group-item list-group-item-action">
+                            <i class="bi bi-gear"></i> Django Admin
+                        </a>
+                        <a href="/api/docs/" class="list-group-item list-group-item-action">
+                            <i class="bi bi-book"></i> Swagger API Docs
+                        </a>
+                        <a href="/api/v1/" class="list-group-item list-group-item-action">
+                            <i class="bi bi-braces"></i> API Root
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
