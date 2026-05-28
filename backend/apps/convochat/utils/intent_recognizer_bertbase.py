@@ -1,7 +1,10 @@
+import logging
 import torch
 from transformers import DistilBertTokenizer, DistilBertForSequenceClassification, Trainer, TrainingArguments
 from typing import List, Dict, Union
 from torch.utils.data import Dataset
+
+logger = logging.getLogger(__name__)
 
 
 class IntentDataset(Dataset):
@@ -96,7 +99,7 @@ if __name__ == "__main__":
     # Test the model
     test_texts = "This product is terrible!"
     results = recognizer.recognize_intent(test_texts)
-    print(results)
+    logger.info(results)
     # test_texts = [
     #     "When do you close?",
     #     "This product is terrible!",
