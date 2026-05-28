@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}- General Chat History{% endblock title %}
+
+{% block content %}
+<!-- [ Main Content ] start -->
+  <div class="col-xl-10 col-md-10 mx-4">
+    <h2 class='mb-4'> {{ user.username|capfirst }}: Chat History ({{ conversations.count }})</h2>
+    {% for conversation in conversations %}
+      <div class="card mb-3">
+        <div class="card-header">
+          {{ conversation.title }}
+        </div>
+        <div class="card-body">
+          <h5 class="card-title"></h5>
+          <p class="card-text"><a href="{% url 'general_assistant:generalchat_detail_url' conversation.id %}" class="mb-1 ml-2">
+            {{ conversation.title|truncatechars:50 }}
+          </a></p>
+          <a class="btn btn-primary" href="{% url 'general_assistant:generalchat_detail_url' conversation.id %}">View</a>
+          <a class="btn btn-primary" href="{% url 'general_assistant:generalchat_delete_url' conversation.id %}">Delete</a> 
+        </div>
+        <div class="card-footer text-body-secondary">
+          <h6 class="text-muted"><i class="fas fa-circle text-c-green f-10 m-r-15"></i>
+            {{ conversation.created }}
+          </h6>
+        </div>
+      </div>
+    {% empty %}
+        No Conversation Found.
+    {% endfor %}
+  </div>
+{% endblock content %}
