@@ -1,0 +1,284 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load custom_markdown %}
+
+{% block title %}- Chat{% endblock %}
+
+{% block on_page_css %}
+<link rel="stylesheet" href="{% static 'general_assistant/css/styles.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="chat-container">
+    <div class="chat-header p-3 bg-white border-bottom">
+      <h2 id="conversation-title">{% if conversation.title %}{{ conversation.title|truncatechars:40 }}{% else %}Untitled Conversation{% endif %}</h2>
+    </div>
+
+    <div id="chat-messages" class="chat-messages">
+      {% if previous_messages %}
+        {% for message in previous_messages %}
+          <div class="message {% if message.is_from_user %}user-message{% else %}assistant-message{% endif %}">
+            {% if message.content_type == 'AU' %}
+              <div class="audio-message">
+                <audio controls src="{{ message.audio_content.audio_file.url }}"></audio>
+                <div class="mt-2">{{ message.audio_content.transcript }}</div>
+              </div>
+            {% elif message.content_type == 'IM' %}
+              <div class="image-message">
+                <img src="{{ message.image_content.image.url }}" class="img-fluid" alt="User uploaded image">
+                <div class="mt-2">{{ message.content }}</div>
+              </div>
+            {% else %}
+              {{ message.content|markdown_to_html }}
+            {% endif %}
+          </div>
+        {% endfor %}
+      {% endif %}
+    </div>
+
+    <div class="input-container">
+      <div class="audio-controls mb-2">
+        <button id="startRecording" class="btn btn-outline-primary">Start Recording</button>
+        <button id="stopRecording" class="btn btn-outline-danger" disabled>Stop Recording</button>
+      </div>
+      
+      <div class="input-group">
+        <div class="input-group-prepend">
+          <label class="btn btn-outline-secondary mb-0" for="image-upload">
+            <i class="fas fa-image"></i>
+          </label>
+          <input type="file" id="image-upload" accept="image/*" style="display: none">
+        </div>
+        
+        <textarea id="chat-message-input" class="form-control" rows="1" placeholder="Type your message..."></textarea>
+        
+        <div class="input-group-append">
+          <button id="chat-message-submit" class="btn btn-primary">
+            <i class="fas fa-paper-plane"></i>
+          </button>
+        </div>
+      </div>
+      
+      <div id="image-preview-container" class="mt-2" style="display: none">
+        <img id="image-preview" class="image-preview">
+        <button id="remove-image" class="btn btn-sm btn-danger mt-2">Remove Image</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block on_page_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/RecordRTC/5.6.2/RecordRTC.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+let recorder;
+let conversationId = '{{ conversation_id }}';
+let chatSocket;
+let currentImageFile = null;
+let currentAssistantMessage = null;
+let accumulatedResponse = '';
+let messageStarted = false;
+
+function connectWebSocket() {
+    const wsScheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    chatSocket = new WebSocket(
+        `${wsScheme}://${window.location.host}/ws/general_assistant/${conversationId}/`
+    );
+    
+    chatSocket.onmessage = handleWebSocketMessage;
+    chatSocket.onclose = () => console.error('WebSocket closed unexpectedly');
+}
+
+function handleWebSocketMessage(event) {
+    const data = JSON.parse(event.data);
+    const chatMessages = document.getElementById('chat-messages');
+    
+    if (data.type === 'welcome') {
+        console.log(data.message);
+    } else if (data.type === 'title_update') {
+        document.getElementById('conversation-title').textContent = data.title;
+    } else if (data.event === 'on_parser_start') {
+        // Start a new message when parser begins
+        messageStarted = true;
+        currentAssistantMessage = null;
+        accumulatedResponse = '';
+    } else if (data.event === 'on_parser_stream' && data.data?.chunk) {
+        handleStreamingMessage(data.data.chunk);
+    } else if (data.event === 'on_parser_end') {
+        // Reset state when parser ends
+        messageStarted = false;
+        currentAssistantMessage = null;
+    } else if (data.type === 'transcription' || data.type === 'ai_response') {
+        appendMessage(data.message, false, data.type === 'ai_response' ? data.audio_url : null);
+    }
+    
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function handleStreamingMessage(chunk) {
+    const chatMessages = document.getElementById('chat-messages');
+    
+    // Create new message container if needed
+    if (!currentAssistantMessage && messageStarted) {
+        currentAssistantMessage = document.createElement('div');
+        currentAssistantMessage.className = 'message assistant-message';
+        chatMessages.appendChild(currentAssistantMessage);
+        accumulatedResponse = '';
+    }
+    
+    // Update current message
+    if (currentAssistantMessage) {
+        accumulatedResponse += chunk;
+        currentAssistantMessage.innerHTML = marked.parse(accumulatedResponse);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+}
+
+function appendMessage(content, isUser, audioUrl = null) {
+    const chatMessages = document.getElementById('chat-messages');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${isUser ? 'user-message' : 'assistant-message'}`;
+    
+    if (audioUrl) {
+        messageDiv.innerHTML = `
+            <div class="audio-message">
+                <audio controls src="${audioUrl}"></audio>
+                <div class="mt-2">${marked.parse(content)}</div>
+            </div>
+        `;
+    } else {
+        messageDiv.innerHTML = isUser ? content : marked.parse(content);
+    }
+    
+    chatMessages.appendChild(messageDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+
+
+
+
+document.addEventListener('DOMContentLoaded', function() {
+    connectWebSocket();
+    
+    // Image upload handling
+    const imageUpload = document.getElementById('image-upload');
+    const imagePreviewContainer = document.getElementById('image-preview-container');
+    const imagePreview = document.getElementById('image-preview');
+    const removeImage = document.getElementById('remove-image');
+    
+    imageUpload.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            currentImageFile = file;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                imagePreview.src = e.target.result;
+                imagePreviewContainer.style.display = 'block';
+            }
+            reader.readAsDataURL(file);
+        }
+    });
+    
+    removeImage.addEventListener('click', function() {
+        currentImageFile = null;
+        imagePreview.src = '';
+        imagePreviewContainer.style.display = 'none';
+        imageUpload.value = '';
+    });
+    
+    // Message submission handling
+    const messageInput = document.getElementById('chat-message-input');
+    const submitButton = document.getElementById('chat-message-submit');
+    
+    // When sending a message, reset message state
+function sendMessage() {
+    const message = messageInput.value.trim();
+    if (!message && !currentImageFile) return;
+    
+    messageStarted = false;
+    currentAssistantMessage = null;
+    accumulatedResponse = '';
+    
+    if (currentImageFile) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const base64Image = e.target.result.split(',')[1];
+                appendMessage(`<img src="${e.target.result}" class="img-fluid">`, true);
+                chatSocket.send(JSON.stringify({
+                    type: 'IM',
+                    message: base64Image,
+                    uuid: conversationId
+                }));
+            };
+            reader.readAsDataURL(currentImageFile);
+            currentImageFile = null;
+            imagePreviewContainer.style.display = 'none';
+            imageUpload.value = '';
+    }
+    
+    if (message) {
+        appendMessage(message, true);
+        chatSocket.send(JSON.stringify({
+            type: 'TE',
+            message: message,
+            uuid: conversationId
+        }));
+        messageInput.value = '';
+    }
+}
+    
+    submitButton.addEventListener('click', sendMessage);
+    messageInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+    
+    // Audio recording handling
+    const startRecordingButton = document.getElementById('startRecording');
+    const stopRecordingButton = document.getElementById('stopRecording');
+    
+    startRecordingButton.addEventListener('click', async function() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            recorder = new RecordRTC(stream, {
+                type: 'audio',
+                mimeType: 'audio/webm',
+                recorderType: RecordRTC.StereoAudioRecorder,
+                numberOfAudioChannels: 1,
+                desiredSampRate: 16000
+            });
+            recorder.startRecording();
+            startRecordingButton.disabled = true;
+            stopRecordingButton.disabled = false;
+        } catch (error) {
+            console.error('Error starting recording:', error);
+        }
+    });
+    
+    stopRecordingButton.addEventListener('click', function() {
+        recorder.stopRecording(function() {
+            const blob = recorder.getBlob();
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const base64Audio = e.target.result.split(',')[1];
+                appendMessage('Recording sent...', true);
+                chatSocket.send(JSON.stringify({
+                    type: 'AU',
+                    message: base64Audio,
+                    uuid: conversationId
+                }));
+            };
+            reader.readAsDataURL(blob);
+            startRecordingButton.disabled = false;
+            stopRecordingButton.disabled = true;
+        });
+    });
+});
+</script>
+{% endblock %}
