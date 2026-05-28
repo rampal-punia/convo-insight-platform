@@ -42,6 +42,11 @@ cd backend
 python manage.py migrate
 python manage.py seed_demo
 
+# 5b. Seed NLP data (required for the playground's RAG classifier)
+python manage.py create_intents
+python manage.py create_topics
+python manage.py populate_rag_store
+
 # 6. Run the backend
 python manage.py runserver
 # → http://localhost:8000
@@ -275,6 +280,16 @@ python manage.py seed_demo
 ```
 
 The `seed_demo` command creates sample categories, products, demo users, and orders.
+
+Then seed the NLP playground data:
+
+```bash
+python manage.py create_intents
+python manage.py create_topics
+python manage.py populate_rag_store
+```
+
+These load intent/topic labels and generate vector embeddings used by the RAG-based classifier. The `vector` extension (pgvector) is enabled automatically by `migrate` — no manual setup needed.
 
 ### 6. Run the development server
 
