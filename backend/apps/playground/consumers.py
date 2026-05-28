@@ -117,17 +117,52 @@ class ModelManager:
     def _load_topic_model(self):
         """Load topic model with proper error handling.
 
-        Applies a compatibility shim for BertSdpaSelfAttention which was
-        removed in transformers >=5.x but may be referenced by models that
-        were serialised with an older version.
+        Applies two compatibility shims for models serialised with older
+        library versions:
+
+        1. BertSdpaSelfAttention class rename (transformers < 5.x)
+           The class was merged into BertSelfAttention; alias it back so
+           pickled references still resolve.
+
+        2. code() constructor signature change (Python ≤ 3.10 → Python ≥ 3.11)
+           Python 3.11 added qualname (str) at position 12 and exceptiontable
+           (bytes) at position 15, growing the constructor from 16 to 18 args.
+           BERTopic models trained on Python ≤ 3.10 use numba whose JIT
+           functions are pickled as code objects with the old 16-arg layout;
+           they fail on Python 3.12 with "code() argument 13 must be str, not int".
+
+           Fix: patch numba.core.serialize.loads (the function numba calls to
+           deserialise its own pickled bytecode) with a custom Unpickler that
+           intercepts builtins.code and inserts the missing arguments.
         """
-        # Compat shim: BertSdpaSelfAttention was merged into BertSelfAttention
-        # in transformers 5.x.  Models pickled with older transformers still
-        # reference the old class name, so we alias it back.
+        import io
+        import pickle as _pickle
+        import types
+
+        # -- Shim 1: BertSdpaSelfAttention ---------------------------------
         import transformers.models.bert.modeling_bert as _bert_module
 
         if not hasattr(_bert_module, "BertSdpaSelfAttention"):
             _bert_module.BertSdpaSelfAttention = _bert_module.BertSelfAttention
+
+        # -- Shim 2: code() 16-arg → 18-arg for Python ≤ 3.10 pickles -----
+        def _compat_code(*args):
+            """Convert 16-arg (Python ≤ 3.10) code objects to 18-arg (Python ≥ 3.11)."""
+            if len(args) == 16 and isinstance(args[12], int):
+                # Old layout: [..., name(11), firstlineno(12), lnotab(13), freevars(14), cellvars(15)]
+                # New layout: [..., name(11), qualname(12), firstlineno(13), lnotab(14),
+                #              exceptiontable(15), freevars(16), cellvars(17)]
+                args = args[:12] + ("",) + args[12:14] + (b"",) + args[14:]
+            return types.CodeType(*args)
+
+        class _CompatUnpickler(_pickle.Unpickler):
+            def find_class(self, module, name):
+                if module == "builtins" and name == "code":
+                    return _compat_code
+                return super().find_class(module, name)
+
+        def _compat_loads(data):
+            return _CompatUnpickler(io.BytesIO(data)).load()
 
         from bertopic import BERTopic
         from sentence_transformers import SentenceTransformer
@@ -144,8 +179,25 @@ class ModelManager:
                     if os.path.exists(bertopic_path) and os.path.exists(
                         sentence_transformer_path
                     ):
+                        # Patch numba's internal loads for the duration of BERTopic.load()
+                        # so that 16-arg code objects from Python ≤ 3.10 are converted.
+                        _numba_ser = None
+                        try:
+                            import numba.core.serialize as _numba_ser
+
+                            _orig_numba_loads = _numba_ser.loads
+                            _numba_ser.loads = _compat_loads
+                        except ImportError:
+                            pass
+
+                        try:
+                            bertopic = BERTopic.load(bertopic_path)
+                        finally:
+                            if _numba_ser is not None:
+                                _numba_ser.loads = _orig_numba_loads
+
                         self.models["topic"] = {
-                            "bertopic": BERTopic.load(bertopic_path),
+                            "bertopic": bertopic,
                             "sentence_transformer": SentenceTransformer(
                                 sentence_transformer_path
                             ),
