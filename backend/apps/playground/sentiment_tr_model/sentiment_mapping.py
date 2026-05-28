@@ -1,3 +1,8 @@
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 class EcommerceSentimentMapper:
     def __init__(self):
         # Define thresholds for confidence levels
@@ -174,6 +179,6 @@ if __name__ == "__main__":
         0.30
     )
 
-    print("Shipping Joy:", result1)
-    print("Product Anger:", result2)
-    print("Payment Fear:", result3)
+    logger.info("Shipping Joy:", result1)
+    logger.info("Product Anger:", result2)
+    logger.info("Payment Fear:", result3)
