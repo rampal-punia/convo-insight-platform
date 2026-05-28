@@ -13,49 +13,41 @@ pytestmark = pytest.mark.django_db
 
 
 class TestQueryImageModel:
-    """Test the HuggingFace image-captioning API call."""
+    """Test the HuggingFace image-captioning via InferenceClient."""
 
-    @patch("general_assistant.services.requests.post")
-    async def test_success(self, mock_post):
-        mock_response = MagicMock()
-        mock_response.json.return_value = [{"generated_text": "A dog running"}]
-        mock_response.raise_for_status.return_value = None
-        mock_post.return_value = mock_response
+    @patch("general_assistant.services._hf_client")
+    async def test_success(self, mock_client):
+        mock_result = MagicMock()
+        mock_result.generated_text = "A dog running"
+        mock_client.image_to_text.return_value = mock_result
 
         handler = ImageModalHandler()
         result = await handler.query_image_model(b"fake-bytes")
 
         assert result == "A dog running"
-        mock_post.assert_called_once()
-        # Verify timeout was passed
-        _, kwargs = mock_post.call_args
-        assert kwargs["timeout"] == 30
+        mock_client.image_to_text.assert_called_once_with(b"fake-bytes")
 
-    @patch("general_assistant.services.requests.post")
-    async def test_connection_error_returns_fallback(self, mock_post):
-        import requests
-
-        mock_post.side_effect = requests.ConnectionError("DNS failed")
+    @patch("general_assistant.services._hf_client")
+    async def test_api_error_returns_fallback(self, mock_client):
+        mock_client.image_to_text.side_effect = ConnectionError("DNS failed")
 
         handler = ImageModalHandler()
         result = await handler.query_image_model(b"fake-bytes")
 
         assert "unavailable" in result.lower()
 
-    @patch("general_assistant.services.requests.post")
-    async def test_timeout_returns_fallback(self, mock_post):
-        import requests
-
-        mock_post.side_effect = requests.Timeout("timed out")
+    @patch("general_assistant.services._hf_client")
+    async def test_timeout_returns_fallback(self, mock_client):
+        mock_client.image_to_text.side_effect = TimeoutError("timed out")
 
         handler = ImageModalHandler()
         result = await handler.query_image_model(b"fake-bytes")
 
         assert "unavailable" in result.lower()
 
-    @patch("general_assistant.services.requests.post")
-    async def test_unexpected_error_returns_fallback(self, mock_post):
-        mock_post.side_effect = RuntimeError("something broke")
+    @patch("general_assistant.services._hf_client")
+    async def test_unexpected_error_returns_fallback(self, mock_client):
+        mock_client.image_to_text.side_effect = RuntimeError("something broke")
 
         handler = ImageModalHandler()
         result = await handler.query_image_model(b"fake-bytes")
