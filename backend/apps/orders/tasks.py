@@ -1,20 +1,24 @@
+import logging
+
 from celery import shared_task
 from convochat.models import Intent, Topic, Sentiment, Conversation, Message, UserText, AIText
 from convochat.utils.intent_recognizer_bertbase import IntentRecognizer
 from convochat.utils.sentiment_analyzer import SentimentAnalyzer
 from analysis.models import IntentPrediction
 
+logger = logging.getLogger(__name__)
+
 
 @shared_task
 def recognize_intent(message_id):
     usertext = UserText.objects.get(message__id=message_id)
     intents = list(Intent.objects.all())
-    print("Intents in intent model database are: ", intents)
+    logger.info("Intents in intent model database are: ", intents)
     recognizer = IntentRecognizer(intent_labels=intents)
     result = recognizer.recognize_intent([usertext.content])[0]
-    print("result for the intent is: ", result)
-    print('*'*40)
-    print(result['predicted_intent'])
+    logger.info("result for the intent is: ", result)
+    logger.info('*'*40)
+    logger.info(result['predicted_intent'])
 
     IntentPrediction.objects.create(
         message=usertext,
