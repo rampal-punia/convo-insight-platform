@@ -5,6 +5,9 @@ from typing import Annotated, Dict, Optional, Any, List
 from pydantic import BaseModel, Field
 from django.conf import settings
 from langchain_core.runnables import RunnableConfig, ensure_config
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class BaseOrderSchema(BaseModel):
@@ -131,8 +134,8 @@ class ToolConfig:
 if __name__ == '__main__':
     # Example usage
     config = Configuration()
-    print(f"Default Configuration: {config.to_dict()}")
+    logger.info(f"Default Configuration: {config.to_dict()}")
 
     # Example of creating tool config
     tracking_config = ToolConfig()
-    print(f"Default Tool Config: {tracking_config}")
+    logger.info(f"Default Tool Config: {tracking_config}")
