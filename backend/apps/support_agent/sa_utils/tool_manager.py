@@ -22,15 +22,69 @@ from .configuration import (
 logger = logging.getLogger('orders')
 
 
+def _get_db_ops(config: RunnableConfig):
+    """Extract DatabaseOperations from runnable config."""
+    configurable = config.get("configurable", {})
+    db_ops = configurable.get("db_ops")
+    if not db_ops:
+        raise ValueError(
+            "Database operations not provided in config. "
+            "Ensure 'db_ops' is passed in config['configurable']."
+        )
+    return db_ops
+
+
+@tool
+async def list_user_orders(
+    customer_id: str,
+    *,
+    config: Annotated[RunnableConfig, InjectedToolArg]
+) -> str:
+    """List the customer's recent orders.
+
+    Use this when a customer asks about their orders without specifying a
+    particular order ID.  Examples: 'show my orders', 'find my orders',
+    'what are my recent orders', 'order history'.
+
+    Args:
+        customer_id: The ID of the customer whose orders to list
+        config: RunnableConfig containing database operations
+
+    Returns:
+        Formatted list of the customer's recent orders
+    """
+    try:
+        db_ops = _get_db_ops(config)
+        orders = await db_ops.get_recent_orders(int(customer_id))
+
+        if not orders:
+            return "No orders found for this customer."
+
+        formatted = []
+        for order in orders:
+            formatted.append(
+                f"Order #{order['id']} — Placed on {order['created_date']}\n"
+                f"Status: {order['status']}\n"
+                f"Items: {order['item_count']}\n"
+                f"Total: ${order['total_amount']}"
+            )
+        return "\n\n".join(formatted)
+
+    except Exception as e:
+        logger.error(f"Error in list_user_orders: {str(e)}")
+        logger.error(traceback.format_exc())
+        return "Failed to retrieve orders"
+
+
 @tool
 async def web_search(
         query: str,
         *,
         config: Annotated[RunnableConfig, InjectedToolArg]
 ) -> List[Dict[str, str]]:
-    """Search for general web results using DuckDuckGo
-    This function performs a search using the DuckDuckGo search engine, which is known
-    for its privacy-focused approach and unbiased results.
+    """Search for general web results using DuckDuckGo.
+    Use this for general knowledge questions, product comparisons,
+    or any information not related to the customer's orders.
 
     Args:
         query: The search query string
@@ -41,12 +95,10 @@ async def web_search(
     """
     configuration = Configuration.from_runnable_config(config)
 
-    # Initialize DuckDuckGo search wrapper with configuration
     search = DuckDuckGoSearchResults(
         output_format="list",
         num_results=configuration.max_search_results,
     )
-    # Perform the search
     result = await search.ainvoke(query)
     return cast(list[dict[str, Any]], result)
 
@@ -61,39 +113,36 @@ async def track_order(
 ) -> str:
     """Get tracking details for a specific order.
 
+    Call this when a customer mentions a specific order ID and wants to
+    know its status, location, or estimated delivery.
+
     Args:
         order_id: The ID of the order to track
-        customer_id: The ID of the customer making the request
+        customer_id: The ID of the customer (use the customer ID from the system prompt)
         include_history: Whether to include full tracking history
-        config: Configuration containing database operations
+        config: RunnableConfig containing database operations
 
     Returns:
         Formatted string containing tracking information
     """
     try:
-        db_ops = config.get("db_ops")
-        if not db_ops:
-            raise ValueError("Database operations not provided in config")
+        db_ops = _get_db_ops(config)
 
-        # Get order details
         order_details = await db_ops.get_order_details(order_id)
-        if not order_details:
-            return "Order not found"
+        if not order_details or "error" in order_details:
+            return f"Order #{order_id} not found. Please check the order ID."
 
-        # Get tracking information
         tracking_info = await db_ops.get_tracking_info(order_id)
 
-        # Format basic response
         response = (
             f"Order #{order_details['order_id']}\n"
             f"Status: {order_details['status']}\n"
-            f"Tracking Number: {tracking_info['tracking_number']}\n"
-            f"Carrier: {tracking_info['carrier']}\n"
-            f"Current Location: {tracking_info['current_location']}\n"
-            f"Estimated Delivery: {tracking_info['estimated_delivery']}"
+            f"Tracking Number: {tracking_info.get('tracking_number', 'N/A')}\n"
+            f"Carrier: {tracking_info.get('carrier', 'N/A')}\n"
+            f"Current Location: {tracking_info.get('current_location', 'N/A')}\n"
+            f"Estimated Delivery: {tracking_info.get('estimated_delivery', 'N/A')}"
         )
 
-        # Add history if requested
         if include_history and tracking_info.get('history'):
             response += "\n\nTracking History:"
             for event in tracking_info['history']:
@@ -118,27 +167,25 @@ async def modify_order_quantity(
 ) -> str:
     """Modify the quantity of a product in an order.
 
+    Only works for orders in 'Pending' or 'Processing' status.
+
     Args:
         order_id: The ID of the order to modify
-        customer_id: The ID of the customer making the request
+        customer_id: The ID of the customer (use the customer ID from the system prompt)
         product_id: The ID of the product to modify
         new_quantity: The new quantity desired
-        config: Configuration containing database operations
+        config: RunnableConfig containing database operations
 
     Returns:
         Message indicating the result of the modification
     """
     try:
-        db_ops = config.get("db_ops")
-        if not db_ops:
-            raise ValueError("Database operations not provided in config")
+        db_ops = _get_db_ops(config)
 
-        # Validate order status
         can_modify, message = await db_ops.validate_order_status_for_modification(order_id)
         if not can_modify:
             return message
 
-        # Perform modification
         result = await db_ops.update_order(
             order_id,
             {
@@ -166,19 +213,19 @@ async def cancel_order(
 ) -> str:
     """Cancel an order with a specified reason.
 
+    Only works for orders in 'Pending' or 'Processing' status.
+
     Args:
         order_id: The ID of the order to cancel
-        customer_id: The ID of the customer making the request
+        customer_id: The ID of the customer (use the customer ID from the system prompt)
         reason: The reason for cancellation
-        config: Configuration containing database operations
+        config: RunnableConfig containing database operations
 
     Returns:
         Message indicating the result of the cancellation
     """
     try:
-        db_ops = config.get("db_ops")
-        if not db_ops:
-            raise ValueError("Database operations not provided in config")
+        db_ops = _get_db_ops(config)
 
         result = await db_ops.update_order(
             order_id,
@@ -350,12 +397,13 @@ async def update_cart(
     return await get_cart(user_id)
 
 
-# List of all available tools
+# List of all available tools (order matters for model prompt)
 TOOLS: List[Callable[..., Any]] = [
-    web_search,
+    list_user_orders,
     track_order,
     modify_order_quantity,
-    cancel_order
+    cancel_order,
+    web_search,
 ]
 
 # Tool sensitivity configuration (for use in consumers)
