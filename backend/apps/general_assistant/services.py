@@ -6,18 +6,20 @@ from PIL import Image
 import numpy as np
 import cv2
 import io
-import requests
 import asyncio
 import librosa
 import speech_recognition as sr
 from gtts import gTTS
 import tempfile
 import soundfile as sf
+from huggingface_hub import InferenceClient
 
 logger = logging.getLogger('general_assistant')
 
-API_URL = "https://router.huggingface.co/hf-inference/models/Salesforce/blip-image-captioning-large"
-headers = {"Authorization": f"Bearer {settings.HUGGINGFACEHUB_API_TOKEN}"}
+_hf_client = InferenceClient(
+    model='Salesforce/blip-image-captioning-large',
+    token=settings.HUGGINGFACEHUB_API_TOKEN,
+)
 
 
 class VoiceModalHandler:
@@ -109,20 +111,10 @@ class ImageModalHandler:
 
     async def query_image_model(self, image_bytes):
         try:
-            response = await asyncio.to_thread(
-                requests.post,
-                API_URL,
-                headers=headers,
-                data=image_bytes,
-                timeout=30,
-            )
-            response.raise_for_status()
-            return response.json()[0]['generated_text']
-        except (requests.ConnectionError, requests.Timeout) as exc:
-            logger.warning("Image captioning API unavailable: %s", exc)
-            return "Image uploaded successfully, but the image description service is currently unavailable."
+            result = await asyncio.to_thread(_hf_client.image_to_text, image_bytes)
+            return result.generated_text if hasattr(result, 'generated_text') else str(result)
         except Exception as exc:
-            logger.error("Unexpected error querying image model: %s", exc_info=True)
+            logger.warning("Image captioning API unavailable: %s", exc)
             return "Image uploaded successfully, but the image description service is currently unavailable."
 
     @staticmethod
