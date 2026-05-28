@@ -1,3 +1,5 @@
+import logging
+
 from datetime import timedelta
 from celery.schedules import crontab
 from .utils.sentiment_analyzer import SentimentAnalyzer
@@ -16,6 +18,8 @@ from analysis.utils.agent_performance_evaluator import AgentPerformanceEvaluator
 from .models import Intent, Topic
 from django.db import transaction
 from django.utils import timezone
+
+logger = logging.getLogger(__name__)
 
 
 @shared_task
@@ -201,7 +205,7 @@ def evaluate_overall_performance(conversation_id):
     result = evaluator.evaluate_conversation(conversation_id)
 
     # Here you could save the result to a new model, send notifications, etc.
-    print(
+    logger.info(
         f"Performance evaluation for conversation {conversation_id}: {result}")
 
     return result
