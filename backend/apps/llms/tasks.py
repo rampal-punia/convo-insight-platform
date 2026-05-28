@@ -1,9 +1,13 @@
 # apps/llms/tasks.py
 
+import logging
+
 from celery import shared_task
 from .sagemaker_integration import SageMakerIntegration
 from django.conf import settings
 from django.core.management import call_command
+
+logger = logging.getLogger(__name__)
 
 
 sagemaker_integration = SageMakerIntegration(
@@ -36,17 +40,17 @@ def train_and_deploy_model(model_type, script_path, hyperparameters, train_data_
     predictor = sagemaker_integration.deploy_model(model, endpoint_name)
 
     if predictor:
-        print(f"Model deployed successfully to endpoint: {endpoint_name}")
+        logger.info(f"Model deployed successfully to endpoint: {endpoint_name}")
     else:
-        print("Failed to deploy model")
+        logger.info("Failed to deploy model")
 
 
 @shared_task
 def monitor_model_performance(endpoint_name):
     monitoring_data = sagemaker_integration.monitor_model(endpoint_name)
     if monitoring_data:
-        print(
+        logger.info(
             f"Monitoring data for endpoint {endpoint_name}: {monitoring_data}")
     else:
-        print(
+        logger.info(
             f"Failed to retrieve monitoring data for endpoint {endpoint_name}")
