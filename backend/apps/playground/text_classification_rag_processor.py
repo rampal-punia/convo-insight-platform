@@ -1,7 +1,11 @@
+import logging
+
 from langchain_core.prompts import ChatPromptTemplate
 from typing import List, Dict
 from asgiref.sync import sync_to_async
 from .text_classification_vector_store import PGVectorStoreTextClassification
+
+logger = logging.getLogger(__name__)
 
 
 class RAGProcessorTextClassification:
@@ -46,14 +50,14 @@ class RAGProcessorTextClassification:
 
         # Get prompt for task
         prompt = self.prompts[task]
-        print(
+        logger.info(
             f"prompt for rag {task} is: {prompt.format(context=context, query=text)}")
 
         # Generate response
         response = await self.llm.ainvoke(
             prompt.format(context=context, query=text)
         )
-        print("LLM reponse is: ", response)
+        logger.info("LLM reponse is: ", response)
 
         # Parse response based on task
         result = self._parse_response(response.content, task)
