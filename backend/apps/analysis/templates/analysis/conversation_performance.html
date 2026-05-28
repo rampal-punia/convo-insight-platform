@@ -1,0 +1,30 @@
+<!-- templates/analysis/conversation_performance.html -->
+
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>Agent Performance Evaluation</h1>
+<h2>Conversation ID: {{ conversation.id }}</h2>
+
+{% if performance_data %}
+    <h3>Overall Score: {{ performance_data.overall_score|floatformat:2 }}</h3>
+    
+    <h4>Metric Scores:</h4>
+    <ul>
+        {% for metric, score in performance_data.metric_scores.items %}
+            <li>{{ metric|title }}: {{ score|floatformat:2 }}</li>
+        {% endfor %}
+    </ul>
+    
+    <h4>Feedback:</h4>
+    <ul>
+        {% for feedback_item in performance_data.feedback %}
+            <li>{{ feedback_item }}</li>
+        {% endfor %}
+    </ul>
+{% else %}
+    <p>No performance data available for this conversation.</p>
+{% endif %}
+
+<a href="{% url 'convochat:conversation_detail_url' conversation.id %}">Back to Conversation</a>
+{% endblock %}
