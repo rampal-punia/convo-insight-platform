@@ -12,7 +12,7 @@ Before you touch the frontend, you should have:
 
 - The backend running locally (`python manage.py runserver` on port 8000).
 - The seeded demo data loaded (`python manage.py seed_demo`).
-- Node.js 18 or newer installed (`node --version`).
+- Node.js 20 or newer installed (`node --version`) — Next.js 16 requires Node ≥ 20.
 - A working sign-in to the Swagger UI at `http://localhost:8000/api/docs/`.
 
 If any of those is missing, complete the [Intern Onboarding](../../docs/INTERN_ONBOARDING.md) first.
@@ -49,15 +49,17 @@ Useful scripts:
 These rules are not preferences. They are the contract for every change.
 
 1. **JSX only.** Do not add `.ts` or `.tsx` files. Type the boundaries with `zod` (when present) and JSDoc.
-2. **Use the shared API client.** Every HTTP call goes through `lib/api.js`. Never call `fetch` directly from a page.
-3. **Use the shared WebSocket client** (when it lands in Phase 2). Never call `new WebSocket(...)` directly from a page.
-4. **Respect the route grouping.** Auth-required pages live under `app/(app)/`. Public pages live under `app/(public)/`. Do not implement per-page auth checks once the shared layout exists.
-5. **No ad-hoc colours.** Use Tailwind tokens (`slate-*`, the project's defined palette). If you find yourself reaching for a hex value, raise it in the PR — we either extend the token set or pick the closest existing one.
-6. **Loading, empty, error states are mandatory.** A data-fetching page without all three is not done.
-7. **Every interactive control must be keyboard-reachable and labelled.** Inputs paired with `<label htmlFor>`, buttons with text or `aria-label`.
-8. **No `console.log` in shipped code.** Use a single log helper (or remove the log) before opening the PR.
-9. **Every PR includes tests** for the behaviour it changes. PRs that only touch styling can skip new tests but must still pass the suite.
-10. **Single quotes, 2-space indent, trailing commas where ESLint allows.** Let the linter sort it; do not fight it.
+2. **Use the shared session.** Server code uses `auth()`; client code uses `useSession()`. Never store tokens in `localStorage` or `sessionStorage`. Auth.js wiring is documented in [AUTHJS_INTEGRATION.md](./AUTHJS_INTEGRATION.md).
+3. **Use the shared API client.** Every HTTP call goes through `lib/api.js`. Never call `fetch` directly from a page.
+4. **Use the shared WebSocket client** (when it lands in Phase 2). Never call `new WebSocket(...)` directly from a page.
+5. **Respect the route grouping.** Auth-required pages live under `app/(app)/`. Public pages live under `app/(public)/`. Do not implement per-page auth checks once the shared layout exists.
+6. **All new user-visible features land in the cockpit.** The Django templates tier (auth, staff dashboard) is **frozen** — existing pages are edited in place, no new routes are added there. See [backend/docs/SURFACE_TIERS.md](../../backend/docs/SURFACE_TIERS.md) for the full rules.
+7. **No ad-hoc colours.** Use Tailwind tokens (`slate-*`, the project's defined palette). If you find yourself reaching for a hex value, raise it in the PR — we either extend the token set or pick the closest existing one.
+8. **Loading, empty, error states are mandatory.** A data-fetching page without all three is not done.
+9. **Every interactive control must be keyboard-reachable and labelled.** Inputs paired with `<label htmlFor>`, buttons with text or `aria-label`.
+10. **No `console.log` in shipped code.** Use a single log helper (or remove the log) before opening the PR.
+11. **Every PR includes tests** for the behaviour it changes. PRs that only touch styling can skip new tests but must still pass the suite.
+12. **Single quotes, 2-space indent, trailing commas where ESLint allows.** Let the linter sort it; do not fight it.
 
 ---
 
