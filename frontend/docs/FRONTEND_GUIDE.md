@@ -60,13 +60,16 @@ The frontend is a **Next.js 15 App Router** application using **JSX only** (no T
 
 | Technology | Version | Purpose |
 |-----------|---------|---------|
-| **Next.js** | 15.0.3 | React framework with App Router |
-| **React** | 19.0.0 | UI library |
+| **Next.js** | 16.2.6 | React framework with App Router (Turbopack default) |
+| **React** | 19.2.6 | UI library |
+| **Auth.js (next-auth)** | 5.0.0-beta.31 | Cockpit session layer over Django JWT |
 | **TailwindCSS** | 3.4.1 | Utility-first CSS framework |
 | **Vitest** | 4.1.7 | Unit testing framework |
 | **Testing Library** | 16.3.2 | React component testing utilities |
 
 > **Important**: This project uses **JSX only**. Never create `.ts` or `.tsx` files.
+>
+> **Auth posture**: tokens are not stored in `localStorage`. The Django JWT pair is held inside an Auth.js encrypted session cookie. The Auth.js wiring is documented end-to-end in [AUTHJS_INTEGRATION.md](./AUTHJS_INTEGRATION.md) — read that doc before touching any auth-adjacent code.
 
 ---
 
