@@ -98,7 +98,7 @@ class TestVoiceModalHandler:
         result = await handler.speech_to_text("/tmp/x.wav")
 
         assert result == "hello world"
-        stt.transcribe_file.assert_awaited_once_with("/tmp/x.wav")
+        stt.transcribe_file.assert_called_once_with("/tmp/x.wav")
 
     @patch("general_assistant.services.get_tts_provider")
     @patch("general_assistant.services.get_stt_provider")
@@ -116,7 +116,7 @@ class TestVoiceModalHandler:
         result = await handler.text_to_speech("Hi there")
 
         assert result == b"AUDIO"
-        tts.synthesize.assert_awaited_once_with("Hi there")
+        tts.synthesize.assert_called_once_with("Hi there")
 
     @patch("general_assistant.services.get_tts_provider")
     @patch("general_assistant.services.get_stt_provider")
