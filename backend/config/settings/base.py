@@ -192,6 +192,11 @@ FINE_TUNED_MODEL_DIR = "/media/llms/"
 HUGGINGFACEHUB_API_TOKEN = config("HUGGINGFACEHUB_API_TOKEN")
 OPENAI_API_KEY = config("OPENAI_API_KEY")
 TAVILY_API_KEY = config("TAVILY_API_KEY")
+DEEPGRAM_API_KEY = config("DEEPGRAM_API_KEY", default="")
+
+# Voice provider selection (see apps/voice_agent_utils/)
+VOICE_STT_PROVIDER = config("VOICE_STT_PROVIDER", default="deepgram")
+VOICE_TTS_PROVIDER = config("VOICE_TTS_PROVIDER", default="deepgram")
 
 # =============================================================================
 # Internationalization
