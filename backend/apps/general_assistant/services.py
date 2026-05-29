@@ -8,11 +8,15 @@ import cv2
 import io
 import asyncio
 import librosa
-import speech_recognition as sr
-from gtts import gTTS
-import tempfile
 import soundfile as sf
 from huggingface_hub import InferenceClient
+
+from voice_agent_utils import (
+    SynthesisError,
+    TranscriptionError,
+    get_stt_provider,
+    get_tts_provider,
+)
 
 logger = logging.getLogger('general_assistant')
 
@@ -23,8 +27,11 @@ _hf_client = InferenceClient(
 
 
 class VoiceModalHandler:
+    """Audio pipeline backed by the pluggable ``voice_agent_utils`` providers."""
+
     def __init__(self):
-        self.recognizer = sr.Recognizer()
+        self._stt = get_stt_provider()
+        self._tts = get_tts_provider()
 
     async def process_audio(self, message):
         audio_file = message.audio_content.audio_file.path
@@ -34,30 +41,18 @@ class VoiceModalHandler:
         return text
 
     async def speech_to_text(self, audio_file):
-        def recognize():
-            with sr.AudioFile(audio_file) as source:
-                audio = self.recognizer.record(source)
-            try:
-                return self.recognizer.recognize_google(audio)
-            except sr.UnknownValueError:
-                return "Speech recognition could not understand the audio"
-            except sr.RequestError:
-                return "Could not request results from the speech recognition service"
-
-        return await asyncio.to_thread(recognize)
+        try:
+            return await self._stt.transcribe_file(audio_file)
+        except TranscriptionError as exc:
+            logger.warning("STT failed: %s", exc)
+            return "Speech recognition is currently unavailable."
 
     async def text_to_speech(self, text):
-        def generate_audio():
-            tts = gTTS(text=text, lang='en')
-            temp_file = tempfile.NamedTemporaryFile(
-                delete=False, suffix=".mp3")
-            tts.save(temp_file.name)
-            return temp_file.name
-
-        audio_file = await asyncio.to_thread(generate_audio)
-        with open(audio_file, 'rb') as f:
-            audio_content = f.read()
-        return audio_content
+        try:
+            return await self._tts.synthesize(text)
+        except SynthesisError as exc:
+            logger.warning("TTS failed: %s", exc)
+            return b""
 
     async def get_audio_duration(self, audio_file):
         def get_duration():
@@ -143,14 +138,4 @@ class ImageModalHandler:
         image_message.save()
 
 
-if __name__ == '__main__':
-    wav_file = '/home/ram/convo-insight-platform/media/voice_messages/audio_11.wav'
-    vh = VoiceModalHandler()
 
-    # Run the async function using asyncio.run()
-    # text = asyncio.run(vh.speech_to_text(wav_file))
-    # print(text)
-
-    text = "Life is awesome and programming in python is great."
-    speech = asyncio.run(vh.text_to_speech(text))
-    logger.info(speech)
