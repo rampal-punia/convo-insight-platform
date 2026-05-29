@@ -127,11 +127,11 @@ These targets are aspirations that drive engineering decisions; they are not gat
 
 The frontend is, and will remain:
 
-- **A Next.js 15 App Router application written in JSX only.** No TypeScript files are added to the repository.
+- **A Next.js 16 App Router application written in JSX only.** Turbopack is the default builder. No TypeScript files are added to the repository.
 - **Decoupled from the backend** behind the REST API and WebSocket protocol. No shared code, no server-rendered Django leakage into Next.js routes.
 - **Single client codebase** — no separate mobile app, no separate admin app. Differentiation happens via routes and roles, not separate builds.
 - **Server-rendered when the route is static or auth-agnostic, client-rendered when interactive.** Streaming and WebSockets force certain routes to be client components; everything else defaults to server.
-- **Token-authenticated** via JWT obtained from the backend, with a clear migration path to httpOnly cookies for production hardening.
+- **Session-authenticated via Auth.js v5.** The Django JWT pair is held inside an encrypted, httpOnly Auth.js session cookie. `localStorage` is not used for tokens. Django remains the canonical identity store.
 
 Anything that does not fit this posture requires a written design proposal before implementation.
 
