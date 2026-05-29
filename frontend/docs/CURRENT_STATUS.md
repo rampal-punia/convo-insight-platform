@@ -8,13 +8,13 @@
 
 | Area | State |
 |---|---|
-| Framework | Next.js 15.0.3 (App Router) |
+| Framework | Next.js 16.2.6 (App Router, Turbopack default) |
 | Language | JSX only — no TypeScript files |
-| UI library | React 19.0.0 |
+| UI library | React 19.2.6 |
 | Styling | TailwindCSS 3.4.1 (default config, no custom tokens yet) |
 | Testing | Vitest 4.1.7 + Testing Library + jsdom |
 | API client | Single file at [frontend/lib/api.js](../lib/api.js) |
-| Auth | JWT (access + refresh) stored in `localStorage` |
+| Auth | **Transitional**: JWT in `localStorage` today; **Auth.js v5 (`next-auth@5.0.0-beta.31`) installed** and ready to wire — see [AUTHJS_INTEGRATION.md](./AUTHJS_INTEGRATION.md) |
 | Routes shipped | `/`, `/login`, `/products` |
 | WebSocket support | Not yet wired on the frontend |
 | Design system | Not yet established — Tailwind utilities used ad hoc |
@@ -73,7 +73,7 @@ Observations:
 
 ## 4. API Client (`lib/api.js`)
 
-A single thin wrapper around `fetch`. Capabilities:
+A single thin wrapper around `fetch`. Capabilities today:
 
 - Attaches `Authorization: Bearer <access>` from `localStorage` when `auth: true` (default).
 - On `401`, attempts a single refresh via `/api/v1/auth/token/refresh/` and retries the original request once.
@@ -81,13 +81,14 @@ A single thin wrapper around `fetch`. Capabilities:
 - Throws an `Error` with `status` and `data` properties on non-OK responses.
 - Exposes `login`, `logout`, `me`, `getAccess`, `getRefresh`, `setTokens`, `clearTokens`.
 
+> **Pending migration:** `next-auth@5.0.0-beta.31` is installed but not yet wired. The Auth.js work supersedes `localStorage` token storage, removes the manual refresh retry, and replaces the page-level guards with middleware + a server-rendered `(app)` layout guard. The full playbook lives in [AUTHJS_INTEGRATION.md](./AUTHJS_INTEGRATION.md). Until that ships, the helpers above remain in use.
+
 Known gaps (tracked under Phase 0):
 
 - No request abort / cancellation support.
 - No retry policy beyond the single refresh on `401`.
 - No central error sink for observability.
 - No schema validation on responses.
-- Token storage uses `localStorage`; migration to httpOnly cookies is in Phase 5.
 
 ---
 
@@ -170,10 +171,13 @@ That is the full surface today. Everything beyond this is on the roadmap in [STR
 
 ## 11. Active Phase Checklist (Phase 0 — Foundations)
 
+- [x] Next.js 16.2.6 + React 19.2.6 baseline (Turbopack default).
+- [x] `next-auth@5.0.0-beta.31` installed; ESLint flat config (`eslint.config.mjs`) in place.
+- [ ] **Auth.js integration shipped** per [AUTHJS_INTEGRATION.md](./AUTHJS_INTEGRATION.md) — session cookie replaces `localStorage`, middleware route protection, refresh handled in `jwt` callback.
 - [ ] Tailwind design tokens defined in `tailwind.config.js` (colours, spacing, typography, radii).
 - [ ] Route groups introduced: `(public)` and `(app)`.
-- [ ] Shared `(app)/layout.jsx` with auth guard and top navigation.
-- [ ] `lib/` split into `api.js`, `auth.js`, `ws.js`, `hooks/useApi.js`.
+- [ ] Shared `(app)/layout.jsx` with server-side auth guard and top navigation.
+- [ ] `lib/` split into `api.js`, `auth-server.js`, `ws.js`, `hooks/useApi.js`.
 - [ ] `components/ui/` primitives shipped: `Button`, `Card`, `Input`, `Badge`, `Spinner`, `EmptyState`, `ErrorState`.
 - [ ] `zod` introduced; schemas for `LoginResponse`, `Product`, `User` added.
 - [ ] `/products` and `/login` refactored onto the new baseline with no behavioural change.
