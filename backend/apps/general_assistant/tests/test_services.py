@@ -5,6 +5,7 @@ from unittest.mock import patch, MagicMock
 import numpy as np
 
 from general_assistant.services import ImageModalHandler, VoiceModalHandler
+from voice_agent_utils.base import BaseSTTProvider, BaseTTSProvider
 
 pytestmark = pytest.mark.django_db
 
@@ -76,9 +77,84 @@ class TestProcessImage:
 
 
 class TestVoiceModalHandler:
-    def test_init(self):
+    def test_init_wires_providers(self):
         handler = VoiceModalHandler()
-        assert handler.recognizer is not None
+        assert isinstance(handler._stt, BaseSTTProvider)
+        assert isinstance(handler._tts, BaseTTSProvider)
+
+    @patch("general_assistant.services.get_tts_provider")
+    @patch("general_assistant.services.get_stt_provider")
+    async def test_speech_to_text_delegates_to_provider(self, mock_stt, mock_tts):
+        stt = MagicMock()
+
+        async def _t(path):
+            return "hello world"
+
+        stt.transcribe_file.side_effect = _t
+        mock_stt.return_value = stt
+        mock_tts.return_value = MagicMock()
+
+        handler = VoiceModalHandler()
+        result = await handler.speech_to_text("/tmp/x.wav")
+
+        assert result == "hello world"
+        stt.transcribe_file.assert_awaited_once_with("/tmp/x.wav")
+
+    @patch("general_assistant.services.get_tts_provider")
+    @patch("general_assistant.services.get_stt_provider")
+    async def test_text_to_speech_delegates_to_provider(self, mock_stt, mock_tts):
+        tts = MagicMock()
+
+        async def _s(text):
+            return b"AUDIO"
+
+        tts.synthesize.side_effect = _s
+        mock_tts.return_value = tts
+        mock_stt.return_value = MagicMock()
+
+        handler = VoiceModalHandler()
+        result = await handler.text_to_speech("Hi there")
+
+        assert result == b"AUDIO"
+        tts.synthesize.assert_awaited_once_with("Hi there")
+
+    @patch("general_assistant.services.get_tts_provider")
+    @patch("general_assistant.services.get_stt_provider")
+    async def test_speech_to_text_swallows_provider_error(self, mock_stt, mock_tts):
+        from voice_agent_utils import TranscriptionError
+
+        stt = MagicMock()
+
+        async def _t(path):
+            raise TranscriptionError("boom")
+
+        stt.transcribe_file.side_effect = _t
+        mock_stt.return_value = stt
+        mock_tts.return_value = MagicMock()
+
+        handler = VoiceModalHandler()
+        result = await handler.speech_to_text("/tmp/x.wav")
+
+        assert "unavailable" in result.lower()
+
+    @patch("general_assistant.services.get_tts_provider")
+    @patch("general_assistant.services.get_stt_provider")
+    async def test_text_to_speech_swallows_provider_error(self, mock_stt, mock_tts):
+        from voice_agent_utils import SynthesisError
+
+        tts = MagicMock()
+
+        async def _s(text):
+            raise SynthesisError("boom")
+
+        tts.synthesize.side_effect = _s
+        mock_tts.return_value = tts
+        mock_stt.return_value = MagicMock()
+
+        handler = VoiceModalHandler()
+        result = await handler.text_to_speech("anything")
+
+        assert result == b""
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
