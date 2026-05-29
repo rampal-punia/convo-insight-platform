@@ -10,6 +10,7 @@ import asyncio
 import logging
 from typing import Any
 
+from deepgram import DeepgramClient
 from django.conf import settings
 
 from ..base import BaseSTTProvider
@@ -22,10 +23,6 @@ class DeepgramSTTProvider(BaseSTTProvider):
     """Deepgram prerecorded transcription."""
 
     def _build_client(self) -> Any:
-        # Imported lazily so unit tests can patch the SDK without paying the
-        # import cost at module load.
-        from deepgram import DeepgramClient
-
         api_key = getattr(settings, "DEEPGRAM_API_KEY", "") or ""
         if not api_key:
             raise TranscriptionError(
