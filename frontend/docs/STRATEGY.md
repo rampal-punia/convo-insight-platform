@@ -20,8 +20,9 @@ We are making the following bets. Each one shapes the implementation.
 
 | Bet | What it means in practice |
 |---|---|
-| **App Router + JSX, no TypeScript** | All new code is `.jsx` / `.js`. Type safety comes from JSDoc, schema validation at the API boundary, and tests — not from a compiler. |
-| **One API client, one auth model** | Every network call goes through `lib/api.js`. WebSocket auth uses the same JWT, attached as a query parameter (matching the backend's `JWTAuthMiddleware`). |
+| **Next.js 16 App Router + JSX, no TypeScript** | All new code is `.jsx` / `.js`. Turbopack is the default builder (`next dev` and `next build`). Type safety comes from JSDoc, schema validation at the API boundary, and tests — not from a compiler. |
+| **Auth.js v5 owns the cockpit session** | `next-auth@5.0.0-beta.31` holds the Django JWT pair inside an encrypted httpOnly cookie. Route protection is middleware-first; the `(app)/layout.jsx` server check is the belt-and-braces. Refresh is silent inside the `jwt` callback. See [AUTHJS_INTEGRATION.md](./AUTHJS_INTEGRATION.md). Django remains the canonical identity store. |
+| **One API client, one session model** | Every network call goes through `lib/api.js`. The access token is read from the Auth.js session — never from `localStorage`. WebSocket auth uses the same JWT, attached as a `?token=` query parameter (matching the backend's `JWTAuthMiddleware`). |
 | **Server components by default** | Routes are server components unless they need browser APIs, hooks, or WebSockets. Client boundaries are explicit and minimal. |
 | **TailwindCSS + a token-driven design system** | All styling is utility-first. Colours, spacing, radii, and typography flow from `tailwind.config.js` tokens. No ad-hoc hex values in JSX. |
 | **Composition over framework lock-in** | We prefer small, swappable libraries (`recharts` for charts, `zod` for schema validation, `swr` for cache + revalidation) over heavy frameworks. |
@@ -149,9 +150,11 @@ Each phase has a clear exit criterion. We do not move to the next phase until th
 The following concerns apply to every phase and every change.
 
 ### 5.1 Authentication & Sessions
-- JWT access (~5 min) + refresh (~1 day) lifetimes, set by the backend.
-- Tokens live in `localStorage` today. The hardening path to httpOnly cookies is documented in Phase 5 and requires a coordinated backend change; it is not done piecemeal.
-- A single auth guard lives in `(app)/layout.jsx`. No page implements its own guard. Pages that need the current user use a `useCurrentUser()` hook backed by `/api/v1/users/me/`.
+- JWT access (~5 min) + refresh (~1 day) lifetimes, set by the Django backend.
+- **Auth.js v5 (`next-auth@5.0.0-beta.31`) owns the cockpit session.** The Django JWT pair lives inside an encrypted, httpOnly session cookie issued by Auth.js. Refresh-token rotation happens silently inside the `jwt` callback. `localStorage`-based token storage is removed as part of this migration.
+- Route protection is **middleware-first** (`middleware.js` at the project root). The `(app)/layout.jsx` server component calls `auth()` as a second line of defence. No page implements its own guard.
+- Pages that need the current user read it from the session (`auth()` on the server, `useSession()` on the client). The `/api/v1/users/me/` endpoint is called only inside the `authorize()` callback to hydrate the session on sign-in.
+- Implementation plan: [AUTHJS_INTEGRATION.md](./AUTHJS_INTEGRATION.md).
 
 ### 5.2 Data Fetching
 - Client-side reads use a single `useApi(path, options)` hook backed by `lib/api.js`. The hook returns `{ data, error, isLoading, refresh }`.
