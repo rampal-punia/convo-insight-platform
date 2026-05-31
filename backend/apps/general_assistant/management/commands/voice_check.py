@@ -63,7 +63,7 @@ class Command(BaseCommand):
             "--model",
             default="nova-3",
             metavar="MODEL",
-            help="Deepgram STT model (default: nova-3).",
+            help="Deepgram STT model (default: nova-3, aura-2-asteria-en).",
         )
         stt_p.add_argument(
             "--language",
