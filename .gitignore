@@ -40,6 +40,18 @@ node_modules/
 .next/
 out/
 
+# Audio
+*.wav
+*.mp3
+*.ogg
+*.flac
+*.m4a
+*.aac
+*.opus
+*.webm
+*.aiff
+*.alac
+
 # IDE
 .idea/
 .vscode/
